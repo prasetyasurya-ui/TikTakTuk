@@ -1,10 +1,10 @@
-import React, { useState } from 'react';
+import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 
 const CustomerForm = () => {
   const navigate = useNavigate();
   const [confirmPassword, setConfirmPassword] = useState('');
-  const [errors, setErrors] = useState<any>({});
+  const [errors, setErrors] = useState({});
   
   const [formData, setFormData] = useState({
     full_name: "",
@@ -16,39 +16,39 @@ const CustomerForm = () => {
 
   const emailRegex = /^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$/;
 
-  const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleChange = (e) => {
     const { name, value } = e.target;
 
     const emailRegex = /^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$/;
 
     if (name == "email" && !emailRegex.test(name)) {
-        setErrors((prev: any) => ({ ...prev, email: "Email tidak valid" }));
+        setErrors((prev) => ({ ...prev, email: "Email tidak valid" }));
         return;
     }
     
     if (name === 'confirmPassword') {
       setConfirmPassword(value);
       if (value !== formData.password) {
-        setErrors((prev: any) => ({ ...prev, confirmPassword: "Password tidak cocok" }));
+        setErrors((prev) => ({ ...prev, confirmPassword: "Password tidak cocok" }));
       } else {
-        setErrors((prev: any) => ({ ...prev, confirmPassword: "" }));
+        setErrors((prev) => ({ ...prev, confirmPassword: "" }));
       }
     } else {
       setFormData(prev => ({ ...prev, [name]: value }));
-      if (errors[name]) setErrors((prev: any) => ({ ...prev, [name]: "" }));
+      if (errors[name]) setErrors((prev) => ({ ...prev, [name]: "" }));
     }
   };
 
-  const handleRegister = (e: React.FormEvent) => {
+  const handleRegister = (e) => {
     e.preventDefault();
     
     if (formData.password !== confirmPassword) {
-      setErrors((prev: any) => ({ ...prev, confirmPassword: "Password tidak cocok" }));
+      setErrors((prev) => ({ ...prev, confirmPassword: "Password tidak cocok" }));
       return;
     }
 
     if (!emailRegex.test(formData.email)) {
-      setErrors((prev: any) => ({ ...prev, email: "Email tidak valid" }));
+      setErrors((prev) => ({ ...prev, email: "Email tidak valid" }));
       return;
     }
 
