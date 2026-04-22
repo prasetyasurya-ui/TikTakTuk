@@ -1,36 +1,28 @@
-import React from 'react';
+import React, { useEffect, useState } from 'react';
 import Navbar from '../../components/Navbar';
+import { getCurrentSession, fetchCustomerDashboard } from '../../services/api';
 
 const CustomerDashboard = () => {
-  // Data dummy sesuai requirement
-  const customer = {
-    nama: "Prasetya Surya Syahputra",
+  const session = getCurrentSession();
+  const [customer, setCustomer] = useState({
+    nama: 'User',
     stats: {
-      tiket_aktif: 3,
-      acara_diikuti: 12,
-      promo_tersedia: 5,
-      total_belanja_bulan_ini: "Rp 1.250.000"
+      tiket_aktif: 0,
+      acara_diikuti: 0,
+      promo_tersedia: 0,
+      total_belanja_bulan_ini: 'Rp 0',
     },
-    // List tiket mendatang (top 2 terdekat)
-    upcoming_tickets: [
-      {
-        id: "TIX-2026-001",
-        nama_event: "Dua Dekade Fest: Fasilkom UI",
-        tanggal_event: "30 April 2026",
-        lokasi_event: "Balairung Universitas Indonesia",
-        jenis_tiket: "VIP",
-        waktu_mulai: "19:00 WIB"
-      },
-      {
-        id: "TIX-2026-015",
-        nama_event: "Jazz Goes To Campus (JGTC)",
-        tanggal_event: "15 Mei 2026",
-        lokasi_event: "Fakultas Ekonomi UI",
-        jenis_tiket: "Festival",
-        waktu_mulai: "15:00 WIB"
-      }
-    ]
-  };
+    upcoming_tickets: [],
+  });
+
+  useEffect(() => {
+    const loadCustomerDashboard = async () => {
+      const data = await fetchCustomerDashboard(session.userId);
+      setCustomer(data);
+    };
+
+    loadCustomerDashboard();
+  }, [session.userId]);
 
   return (
     <div className="min-h-screen bg-slate-50">

@@ -1,5 +1,16 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { registerCustomer } from '../../services/api';
+import {
+  normalizeText,
+  normalizePhone,
+  isValidEmail,
+  isValidPhone,
+  isValidUsername,
+  isValidPassword,
+  SQL_MAX_LENGTH,
+  hasMaxLength,
+} from '../../utils/formValidation';
 
 const CustomerForm = () => {
   const navigate = useNavigate();
@@ -14,17 +25,8 @@ const CustomerForm = () => {
     password: "",
   });
 
-  const emailRegex = /^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$/;
-
   const handleChange = (e) => {
     const { name, value } = e.target;
-
-    const emailRegex = /^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$/;
-
-    if (name == "email" && !emailRegex.test(name)) {
-        setErrors((prev) => ({ ...prev, email: "Email tidak valid" }));
-        return;
-    }
     
     if (name === 'confirmPassword') {
       setConfirmPassword(value);
@@ -39,25 +41,65 @@ const CustomerForm = () => {
     }
   };
 
-  const handleRegister = (e) => {
+  const handleRegister = async (e) => {
     e.preventDefault();
-    
-    if (formData.password !== confirmPassword) {
-      setErrors((prev) => ({ ...prev, confirmPassword: "Password tidak cocok" }));
+
+    const normalized = {
+      full_name: normalizeText(formData.full_name),
+      email: normalizeText(formData.email),
+      phone_number: normalizePhone(formData.phone_number),
+      username: normalizeText(formData.username),
+      password: formData.password,
+    };
+
+    const nextErrors = {};
+
+    if (normalized.full_name.length < 3) {
+      nextErrors.full_name = 'Nama lengkap minimal 3 karakter';
+    }
+
+    if (!hasMaxLength(normalized.full_name, SQL_MAX_LENGTH.FULL_NAME)) {
+      nextErrors.full_name = `Nama lengkap maksimal ${SQL_MAX_LENGTH.FULL_NAME} karakter`;
+    }
+
+    if (!isValidEmail(normalized.email)) {
+      nextErrors.email = 'Email tidak valid';
+    }
+
+    if (!hasMaxLength(normalized.email, SQL_MAX_LENGTH.CONTACT_EMAIL)) {
+      nextErrors.email = `Email maksimal ${SQL_MAX_LENGTH.CONTACT_EMAIL} karakter`;
+    }
+
+    if (!isValidPhone(normalized.phone_number)) {
+      nextErrors.phone_number = 'Nomor telepon harus 10-15 digit angka';
+    }
+
+    if (!hasMaxLength(normalized.phone_number, SQL_MAX_LENGTH.PHONE_NUMBER)) {
+      nextErrors.phone_number = `Nomor telepon maksimal ${SQL_MAX_LENGTH.PHONE_NUMBER} karakter`;
+    }
+
+    if (!isValidUsername(normalized.username)) {
+      nextErrors.username = 'Username minimal 4 karakter (huruf/angka/underscore)';
+    }
+
+    if (!isValidPassword(normalized.password)) {
+      nextErrors.password = 'Password minimal 6 karakter';
+    }
+
+    if (normalized.password !== confirmPassword) {
+      nextErrors.confirmPassword = 'Password tidak cocok';
+    }
+
+    if (Object.keys(nextErrors).length > 0) {
+      setErrors(nextErrors);
       return;
     }
 
-    if (!emailRegex.test(formData.email)) {
-      setErrors((prev) => ({ ...prev, email: "Email tidak valid" }));
+    const result = await registerCustomer(normalized);
+    if (!result.ok) {
+      setErrors((prev) => ({ ...prev, username: result.message }));
       return;
     }
-
-    const users = JSON.parse(localStorage.getItem('registeredUsers') || '[]');
-    users.push(formData);
-    localStorage.setItem('registeredUsers', JSON.stringify(users));
-    
-    localStorage.setItem('isLoggedIn', 'true');
-    localStorage.setItem('userRole', 'customer');
     
     alert("Registrasi Berhasil!");
     navigate('/dashboard');
@@ -80,9 +122,11 @@ const CustomerForm = () => {
               placeholder="Masukkan nama lengkap"
               className="w-full px-4 py-2 rounded-lg border border-slate-300 focus:ring-2 focus:ring-blue-500 outline-none transition-all"
               required
+              value={formData.full_name}
               onChange={handleChange}
               maxLength={100}
             />
+            {errors.full_name && <p className="text-red-500 text-xs">{errors.full_name}</p>}
           </div>
 
           <div>
@@ -93,6 +137,8 @@ const CustomerForm = () => {
               placeholder="user@mail.com"
               className={`w-full px-4 py-2 rounded-lg border ${errors.email ? 'border-red-500' : 'border-slate-300'} outline-none`}
               required
+              value={formData.email}
+              maxLength={SQL_MAX_LENGTH.CONTACT_EMAIL}
               onChange={handleChange}
             />
             {errors.email && <p className="text-red-500 text-xs">{errors.email}</p>}
@@ -106,9 +152,12 @@ const CustomerForm = () => {
               placeholder="Masukkan nomor telepon"
               className="w-full px-4 py-2 rounded-lg border border-slate-300 outline-none"
               maxLength={20}
+              pattern="\+?[0-9\s-]{10,20}"
               required
+              value={formData.phone_number}
               onChange={handleChange}
             />
+            {errors.phone_number && <p className="text-red-500 text-xs">{errors.phone_number}</p>}
           </div>
 
 
@@ -118,11 +167,15 @@ const CustomerForm = () => {
               name="username"
               type="text"
               placeholder="Pilih username"
-              className="w-full px-4 py-2 rounded-lg border border-slate-300 outline-none"
+              className={`w-full px-4 py-2 rounded-lg border ${errors.username ? 'border-red-500' : 'border-slate-300'} outline-none`}
               required
               maxLength={100}
+              minLength={4}
+              pattern="[A-Za-z0-9_]+"
+              value={formData.username}
               onChange={handleChange}
             />
+            {errors.username && <p className="text-red-500 text-xs">{errors.username}</p>}
           </div>
 
           <div>
@@ -135,8 +188,10 @@ const CustomerForm = () => {
               placeholder='Minimal 6 karakter'
               minLength={6}
               maxLength={255}
+              value={formData.password}
               onChange={handleChange}
             />
+            {errors.password && <p className="text-red-500 text-xs">{errors.password}</p>}
           </div>
 
           <div>
@@ -147,6 +202,8 @@ const CustomerForm = () => {
               className={`w-full px-4 py-2 rounded-lg border ${errors.confirmPassword ? 'border-red-500' : 'border-slate-300'} outline-none`}
               maxLength={255}
               placeholder='Konfirmasi password'
+              required
+              value={confirmPassword}
               onChange={handleChange}
             />
             {errors.confirmPassword && <p className="text-red-500 text-xs">{errors.confirmPassword}</p>}

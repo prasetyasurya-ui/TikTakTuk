@@ -1,39 +1,29 @@
-import React from 'react';
+import React, { useEffect, useState } from 'react';
 import Navbar from '../../components/Navbar';
+import { getCurrentSession, fetchOrganizerDashboard } from '../../services/api';
+import PanelCard from '../../components/ui/PanelCard';
+import StatCard from '../../components/ui/StatCard';
 
 const OrganizerDashboard = () => {
-  // Data dummy sesuai requirement penyelenggara (organizer)
-  const organizerStats = {
+  const session = getCurrentSession();
+  const [organizerStats, setOrganizerStats] = useState({
     ringkasan: {
-      acara_aktif: 4,
-      tiket_terjual: 2850,
-      revenue_bulan_ini: "Rp 312.450.000",
-      venue_mitra: 6
+      acara_aktif: 0,
+      tiket_terjual: 0,
+      revenue_bulan_ini: 'Rp 0',
+      venue_mitra: 0,
     },
-    top_acara: [
-      {
-        id: 1,
-        nama_event: "Dua Dekade Fest: Fasilkom UI",
-        status: "Live",
-        persentase_terjual: 85,
-        total_tiket: 1000
-      },
-      {
-        id: 2,
-        nama_event: "Konser Jazz Malam Universitas",
-        status: "Live",
-        persentase_terjual: 62,
-        total_tiket: 500
-      },
-      {
-        id: 3,
-        nama_event: "Workshop UI/UX Designer Pro",
-        status: "Live",
-        persentase_terjual: 40,
-        total_tiket: 150
-      }
-    ]
-  };
+    top_acara: [],
+  });
+
+  useEffect(() => {
+    const loadOrganizerDashboard = async () => {
+      const data = await fetchOrganizerDashboard(session.userId);
+      setOrganizerStats(data);
+    };
+
+    loadOrganizerDashboard();
+  }, [session.userId]);
 
   return (
     <div className="min-h-screen bg-slate-50 text-slate-900">
@@ -57,29 +47,39 @@ const OrganizerDashboard = () => {
 
         {/* Statistik Utama */}
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6 mb-12">
-          <div className="bg-white p-6 rounded-3xl border border-slate-200 shadow-sm transition-transform hover:scale-[1.02]">
-            <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">Acara Aktif</p>
-            <h3 className="text-2xl font-black text-slate-900">{organizerStats.ringkasan.acara_aktif} Acara</h3>
+          <div className="transition-transform hover:scale-[1.02]">
+            <StatCard
+              label="Acara Aktif"
+              value={`${organizerStats.ringkasan.acara_aktif} Acara`}
+            />
           </div>
-          <div className="bg-white p-6 rounded-3xl border border-slate-200 shadow-sm transition-transform hover:scale-[1.02]">
-            <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">Tiket Terjual</p>
-            <h3 className="text-2xl font-black text-blue-600">{organizerStats.ringkasan.tiket_terjual.toLocaleString()}</h3>
+          <div className="transition-transform hover:scale-[1.02]">
+            <StatCard
+              label="Tiket Terjual"
+              value={organizerStats.ringkasan.tiket_terjual.toLocaleString()}
+              valueClassName="text-blue-600"
+            />
           </div>
-          <div className="bg-white p-6 rounded-3xl border border-slate-200 shadow-sm transition-transform hover:scale-[1.02]">
-            <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">Revenue (Bulan Ini)</p>
-            <h3 className="text-2xl font-black text-emerald-600">{organizerStats.ringkasan.revenue_bulan_ini}</h3>
+          <div className="transition-transform hover:scale-[1.02]">
+            <StatCard
+              label="Revenue (Bulan Ini)"
+              value={organizerStats.ringkasan.revenue_bulan_ini}
+              valueClassName="text-emerald-600"
+            />
           </div>
-          <div className="bg-white p-6 rounded-3xl border border-slate-200 shadow-sm transition-transform hover:scale-[1.02]">
-            <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">Venue Mitra</p>
-            <h3 className="text-2xl font-black text-slate-900">{organizerStats.ringkasan.venue_mitra} Lokasi</h3>
+          <div className="transition-transform hover:scale-[1.02]">
+            <StatCard
+              label="Venue Mitra"
+              value={`${organizerStats.ringkasan.venue_mitra} Lokasi`}
+            />
           </div>
         </div>
 
         {/* Performa Acara Section */}
-        <section className="bg-white rounded-3xl border border-slate-200 shadow-sm overflow-hidden">
+        <PanelCard className="overflow-hidden">
           <div className="p-8 border-b border-slate-100 flex justify-between items-center bg-slate-50/30">
             <h3 className="font-bold text-lg text-slate-900">Performa Acara (Live)</h3>
-            <button className="text-sm font-bold text-blue-600 hover:underline">Lihat Semua Acara →</button>
+            <button className="text-sm font-bold text-blue-600 hover:underline" ><a href="/manage-event">Lihat Semua Acara →</a></button>
           </div>
 
           <div className="divide-y divide-slate-100">
@@ -98,10 +98,10 @@ const OrganizerDashboard = () => {
                 </div>
 
                 {/* Progress Bar Persentase */}
-                <div className="w-full md:w-64 space-y-2">
+                <div className="w-full md:w-80 space-y-2">
                   <div className="flex justify-between items-end">
                     <p className="text-[10px] font-black text-slate-400 uppercase">Tiket Terjual</p>
-                    <p className="text-sm font-black text-slate-900">{event.persentase_terjual}%</p>
+                    <p className="text-sm font-black text-slate-900">{event.persentase_terjual}% ({event.total_tiket.toLocaleString('id-ID')})</p>
                   </div>
                   <div className="w-full bg-slate-100 h-2.5 rounded-full overflow-hidden">
                     <div 
@@ -127,7 +127,7 @@ const OrganizerDashboard = () => {
               <p className="text-slate-400 font-medium italic">Belum ada acara yang sedang aktif.</p>
             </div>
           )}
-        </section>
+        </PanelCard>
 
       </main>
     </div>

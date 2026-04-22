@@ -6,6 +6,11 @@ import OrganizerForm from "./pages/register/OrganizerForm";
 import DashboardPage from "./pages/dashboard/DashboardPage";
 import AdminDashboard from './pages/dashboard/AdminDashboard';
 import OrganizerDashboard from './pages/dashboard/OrganizerDashboard';
+import VenuePage from './pages/Venue/VenuePage';
+import EventPage from './pages/Event/EventPage';
+import EventManagementPage from './pages/Event/EventManagementPage';
+import ProfilePage from './pages/ProfilePage';
+import PlaceholderPage from './pages/PlaceholderPage';
 
 function App() {
   return (
@@ -16,9 +21,24 @@ function App() {
         <Route path="/register/customer" element={<CustomerForm />} />
         <Route path="/register/organizer" element={<OrganizerForm />} />
 
-        <Route path='/dashboard' element={<DashboardPage />}></Route>
-        <Route path='/dashboard/admin' element={<AdminDashboard />}></Route>
-        <Route path='/dashboard/organizer' element={<OrganizerDashboard />}></Route>
+        <Route path='/dashboard' element={<DashboardPage />} />
+        <Route path='/dashboard/admin' element={<AdminDashboard />} />
+        <Route path='/dashboard/organizer' element={<OrganizerDashboard />} />
+
+        <Route path='/venue' element={<VenuePage />} />
+        <Route path='/manage-event' element={<EventManagementPage />} />
+        <Route path='/event' element={<EventPage />} />
+        <Route path='/profile' element={<ProfilePage />} />
+        <Route path='/manage-seats' element={<PlaceholderPage />} />
+        <Route path='/ticket-categories' element={<PlaceholderPage />} />
+        <Route path='/manage-tickets' element={<PlaceholderPage />} />
+        <Route path='/orders' element={<PlaceholderPage />} />
+        <Route path='/asset-tickets' element={<PlaceholderPage />} />
+        <Route path='/asset-orders' element={<PlaceholderPage />} />
+        <Route path='/my-tickets' element={<PlaceholderPage />} />
+        <Route path='/promotion' element={<PlaceholderPage />} />
+        <Route path='/artist' element={<PlaceholderPage />} />
+        <Route path='/explore' element={<EventPage />} />
 
       </Routes>
     </BrowserRouter>

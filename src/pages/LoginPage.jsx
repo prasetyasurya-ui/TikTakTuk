@@ -1,15 +1,40 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { login } from '../services/api';
+import { normalizeText, isValidPassword } from '../utils/formValidation';
 
 const LoginPage = () => {
   const navigate = useNavigate();
-  const [, setError] = useState('');
+  const [error, setError] = useState('');
+  const [formData, setFormData] = useState({ username: '', password: '' });
 
-  const handleLogin = (e) => {
+  const handleChange = (e) => {
+    const { name, value } = e.target;
+    setFormData((prev) => ({ ...prev, [name]: value }));
+  };
+
+  const handleLogin = async (e) => {
     e.preventDefault();
     setError('');
 
-    localStorage.setItem('isLoggedIn', 'true');
+    const username = normalizeText(formData.username);
+    const password = formData.password;
+
+    if (!username) {
+      setError('Username wajib diisi.');
+      return;
+    }
+
+    if (!isValidPassword(password)) {
+      setError('Password minimal 6 karakter.');
+      return;
+    }
+
+    const result = await login(username, password);
+    if (!result.ok) {
+      setError(result.message);
+      return;
+    }
 
     navigate('/dashboard');
   };
@@ -27,24 +52,32 @@ const LoginPage = () => {
           <div>
             <label className="block text-sm font-medium text-slate-700 mb-1">Username</label>
             <input
+              name="username"
               type="text"
               placeholder="Masukkan username"
               className="w-full px-4 py-3 rounded-lg border border-slate-300 focus:ring-2 focus:ring-blue-500 outline-none transition-all"
               required
               maxLength={100}
+              value={formData.username}
+              onChange={handleChange}
             />
           </div>
 
           <div>
             <label className="block text-sm font-medium text-slate-700 mb-1">Password</label>
             <input
+              name="password"
               type="password"
               placeholder="••••••••"
               className="w-full px-4 py-3 rounded-lg border border-slate-300 focus:ring-2 focus:ring-blue-500 outline-none transition-all"
               required
               maxLength={255}
+              value={formData.password}
+              onChange={handleChange}
             />
           </div>
+
+          {error && <p className="text-sm text-red-600">{error}</p>}
 
           <button 
             type="submit"

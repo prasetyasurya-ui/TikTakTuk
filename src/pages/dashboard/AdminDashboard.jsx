@@ -1,26 +1,37 @@
-import React from 'react';
+import React, { useEffect, useState } from 'react';
 import Navbar from '../../components/Navbar';
+import { fetchAdminDashboard } from '../../services/api';
+import PanelCard from '../../components/ui/PanelCard';
+import StatCard from '../../components/ui/StatCard';
 
 const AdminDashboard = () => {
-  // Data dummy sesuai requirement admin console
-  const adminStats = {
+  const [adminStats, setAdminStats] = useState({
     platform: {
-      total_pengguna: "12,450",
-      total_acara_bulan_ini: "142",
-      omzet_platform: "Rp 1.285.000.000",
-      promosi_aktif: "8"
+      total_pengguna: '0',
+      total_acara_bulan_ini: '0',
+      omzet_platform: 'Rp 0',
+      promosi_aktif: '0',
     },
     infrastruktur_venue: {
-      total_venue: 24,
-      reserved_seating: 15,
-      kapasitas_terbesar: "50,000 (Stadion Utama GBK)",
+      total_venue: 0,
+      reserved_seating: 0,
+      kapasitas_terbesar: '-',
     },
     marketing_promosi: {
-      promo_persentase: 3,
-      promo_nominal: 5,
-      total_penggunaan: "1,120 kali"
-    }
-  };
+      promo_persentase: 0,
+      promo_nominal: 0,
+      total_penggunaan: '0 kali',
+    },
+  });
+
+  useEffect(() => {
+    const loadAdminDashboard = async () => {
+      const data = await fetchAdminDashboard();
+      setAdminStats(data);
+    };
+
+    loadAdminDashboard();
+  }, []);
 
   return (
     <div className="min-h-screen bg-slate-50 text-slate-900 font-sans">
@@ -49,32 +60,34 @@ const AdminDashboard = () => {
 
         {/* Section 1: Platform Overview */}
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6 mb-10">
-          <div className="bg-white p-6 rounded-3xl border border-slate-200 shadow-sm">
-            <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">Total Pengguna</p>
-            <h3 className="text-2xl font-black text-slate-900">{adminStats.platform.total_pengguna}</h3>
-            <p className="text-[10px] text-emerald-600 font-bold mt-2">↑ 12% dari bulan lalu</p>
-          </div>
-          <div className="bg-white p-6 rounded-3xl border border-slate-200 shadow-sm">
-            <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">Total Acara (Bulan Ini)</p>
-            <h3 className="text-2xl font-black text-slate-900">{adminStats.platform.total_acara_bulan_ini}</h3>
-            <p className="text-[10px] text-slate-400 font-medium mt-2">Running campaigns</p>
-          </div>
-          <div className="bg-white p-6 rounded-3xl border border-slate-200 shadow-sm">
-            <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">Omzet Platform (GV)</p>
-            <h3 className="text-2xl font-black text-blue-600">{adminStats.platform.omzet_platform}</h3>
-            <p className="text-[10px] text-slate-400 font-medium mt-2">Gross Volume</p>
-          </div>
-          <div className="bg-white p-6 rounded-3xl border border-slate-200 shadow-sm">
-            <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">Promosi Aktif</p>
-            <h3 className="text-2xl font-black text-emerald-600">{adminStats.platform.promosi_aktif}</h3>
-            <p className="text-[10px] text-slate-400 font-medium mt-2">Running campaigns</p>
-          </div>
+          <StatCard
+            label="Total Pengguna"
+            value={adminStats.platform.total_pengguna}
+            hint="↑ 12% dari bulan lalu"
+          />
+          <StatCard
+            label="Total Acara (Bulan Ini)"
+            value={adminStats.platform.total_acara_bulan_ini}
+            hint="Running campaigns"
+          />
+          <StatCard
+            label="Omzet Platform (GV)"
+            value={adminStats.platform.omzet_platform}
+            valueClassName="text-blue-600"
+            hint="Gross Volume"
+          />
+          <StatCard
+            label="Promosi Aktif"
+            value={adminStats.platform.promosi_aktif}
+            valueClassName="text-emerald-600"
+            hint="Running campaigns"
+          />
         </div>
 
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
           
           {/* Section 2: Infrastruktur Venue */}
-          <section className="bg-white rounded-3xl border border-slate-200 shadow-sm overflow-hidden flex flex-col">
+          <PanelCard className="overflow-hidden flex flex-col">
             <div className="p-6 border-b border-slate-100 bg-slate-50/50 flex justify-between items-center">
               <h3 className="font-black text-slate-900 uppercase tracking-tight flex items-center gap-2">
                 Infrastruktur Venue
@@ -101,10 +114,10 @@ const AdminDashboard = () => {
                 Kelola Seluruh Venue
               </button>
             </div>
-          </section>
+          </PanelCard>
 
           {/* Section 3: Marketing & Promosi */}
-          <section className="bg-white rounded-3xl border border-slate-200 shadow-sm overflow-hidden flex flex-col">
+          <PanelCard className="overflow-hidden flex flex-col">
             <div className="p-6 border-b border-slate-100 bg-slate-50/50">
               <h3 className="font-black text-slate-900 uppercase tracking-tight flex items-center gap-2">
                  Marketing & Promosi
@@ -135,7 +148,7 @@ const AdminDashboard = () => {
                 Buka Manager Promosi
               </button>
             </div>
-          </section>
+          </PanelCard>
 
         </div>
       </main>

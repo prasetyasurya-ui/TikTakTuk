@@ -1,5 +1,14 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { registerOrganizer } from '../../services/api';
+import {
+  normalizeText,
+  isValidEmail,
+  isValidUsername,
+  isValidPassword,
+  SQL_MAX_LENGTH,
+  hasMaxLength,
+} from '../../utils/formValidation';
 
 const OrganizerForm = () => {
   const navigate = useNavigate();
@@ -17,8 +26,6 @@ const OrganizerForm = () => {
       contact_email: "",
     }
   });
-
-  const emailRegex = /^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$/;
 
   const isBaseField = (field) => {
     return field === 'username' || field === 'password';
@@ -53,38 +60,60 @@ const OrganizerForm = () => {
         additionalData: { ...prev.additionalData, [name]: value }
       }));
 
-      if (name === 'contact_email') {
-        if (!emailRegex.test(value)) {
-          setErrors(prev => ({ ...prev, contact_email: "Email tidak valid" }));
-        } else {
-          setErrors(prev => ({ ...prev, contact_email: "" }));
-        }
-      }
+      if (errors[name]) setErrors((prev) => ({ ...prev, [name]: '' }));
     }
   };
 
-  const handleRegister = (e) => {
+  const handleRegister = async (e) => {
     e.preventDefault();
-    const orgData = formData.additionalData;
+    const normalized = {
+      organizer_name: normalizeText(formData.additionalData.organizer_name),
+      contact_email: normalizeText(formData.additionalData.contact_email),
+      username: normalizeText(formData.baseData.username),
+      password: formData.baseData.password,
+    };
 
-    if (formData.baseData.password !== confirmPassword) {
-      setErrors((prev) => ({ ...prev, confirmPassword: "Password tidak cocok" }));
+    const nextErrors = {};
+
+    if (normalized.organizer_name.length < 3) {
+      nextErrors.organizer_name = 'Nama organizer minimal 3 karakter';
+    }
+
+    if (!hasMaxLength(normalized.organizer_name, SQL_MAX_LENGTH.ORGANIZER_NAME)) {
+      nextErrors.organizer_name = `Nama organizer maksimal ${SQL_MAX_LENGTH.ORGANIZER_NAME} karakter`;
+    }
+
+    if (!isValidEmail(normalized.contact_email)) {
+      nextErrors.contact_email = 'Email tidak valid';
+    }
+
+    if (!hasMaxLength(normalized.contact_email, SQL_MAX_LENGTH.CONTACT_EMAIL)) {
+      nextErrors.contact_email = `Email maksimal ${SQL_MAX_LENGTH.CONTACT_EMAIL} karakter`;
+    }
+
+    if (!isValidUsername(normalized.username)) {
+      nextErrors.username = 'Username minimal 4 karakter (huruf/angka/underscore)';
+    }
+
+    if (!isValidPassword(normalized.password)) {
+      nextErrors.password = 'Password minimal 6 karakter';
+    }
+
+    if (normalized.password !== confirmPassword) {
+      nextErrors.confirmPassword = 'Password tidak cocok';
+    }
+
+    if (Object.keys(nextErrors).length > 0) {
+      setErrors(nextErrors);
       return;
     }
 
-    if (!emailRegex.test(orgData.contact_email)) {
-      setErrors((prev) => ({ ...prev, contact_email: "Email tidak valid" }));
+    const result = await registerOrganizer(normalized);
+
+    if (!result.ok) {
+      setErrors((prev) => ({ ...prev, username: result.message }));
       return;
     }
-
-    // Simulasi penyimpanan
-    const users = JSON.parse(localStorage.getItem('registeredUsers') || '[]');
-    users.push(formData);
-    localStorage.setItem('registeredUsers', JSON.stringify(users));
-    
-    localStorage.setItem('isLoggedIn', 'true');
-    localStorage.setItem('userRole', 'organizer');
-    localStorage.setItem('userName', orgData.organizer_name);
     
     alert("Registrasi Organizer Berhasil!");
     navigate('/dashboard');
@@ -108,8 +137,11 @@ const OrganizerForm = () => {
               placeholder="Contoh: BEM UI / Promotor Musik"
               className="w-full px-4 py-2 rounded-lg border border-slate-300 focus:ring-2 focus:ring-blue-500 outline-none transition-all"
               required
+              maxLength={SQL_MAX_LENGTH.ORGANIZER_NAME}
+              value={formData.additionalData.organizer_name}
               onChange={handleChange}
             />
+            {errors.organizer_name && <p className="text-red-500 text-xs">{errors.organizer_name}</p>}
           </div>
 
           {/* Contact Email */}
@@ -121,6 +153,8 @@ const OrganizerForm = () => {
               placeholder="org@mail.com"
               className={`w-full px-4 py-2 rounded-lg border ${errors.contact_email ? 'border-red-500' : 'border-slate-300'} outline-none`}
               required
+              maxLength={SQL_MAX_LENGTH.CONTACT_EMAIL}
+              value={formData.additionalData.contact_email}
               onChange={handleChange}
             />
             {errors.contact_email && <p className="text-red-500 text-xs">{errors.contact_email}</p>}
@@ -133,10 +167,15 @@ const OrganizerForm = () => {
               name="username"
               type="text"
               placeholder="Pilih username"
-              className="w-full px-4 py-2 rounded-lg border border-slate-300 outline-none"
+              className={`w-full px-4 py-2 rounded-lg border ${errors.username ? 'border-red-500' : 'border-slate-300'} outline-none`}
               required
+              maxLength={SQL_MAX_LENGTH.USERNAME}
+              minLength={4}
+              pattern="[A-Za-z0-9_]+"
+              value={formData.baseData.username}
               onChange={handleChange}
             />
+            {errors.username && <p className="text-red-500 text-xs">{errors.username}</p>}
           </div>
 
           {/* Password */}
@@ -149,8 +188,11 @@ const OrganizerForm = () => {
               className="w-full px-4 py-2 rounded-lg border border-slate-300 outline-none"
               required
               minLength={6}
+              maxLength={255}
+              value={formData.baseData.password}
               onChange={handleChange}
             />
+            {errors.password && <p className="text-red-500 text-xs">{errors.password}</p>}
           </div>
 
           {/* Confirm Password */}
@@ -162,6 +204,8 @@ const OrganizerForm = () => {
               placeholder='Konfirmasi password'
               className={`w-full px-4 py-2 rounded-lg border ${errors.confirmPassword ? 'border-red-500' : 'border-slate-300'} outline-none`}
               required
+              maxLength={255}
+              value={confirmPassword}
               onChange={handleChange}
             />
             {errors.confirmPassword && <p className="text-red-500 text-xs">{errors.confirmPassword}</p>}
