@@ -25,7 +25,23 @@ export function loadDb() {
   const raw = localStorage.getItem(STORAGE_KEY);
   if (raw) {
     try {
-      return JSON.parse(raw);
+      const parsed = JSON.parse(raw);
+
+      // If stored DB lacks `jenis_seating` in venues (from older seed), enrich from seedData
+      if (Array.isArray(parsed.venue) && parsed.venue.some((v) => v.jenis_seating === undefined)) {
+        const seedVenueMap = new Map((seedData.venue || []).map((v) => [v.venue_id, v.jenis_seating]));
+        parsed.venue = parsed.venue.map((v) => ({
+          ...v,
+          jenis_seating: v.jenis_seating !== undefined ? v.jenis_seating : seedVenueMap.get(v.venue_id) || null,
+        }));
+        try {
+          localStorage.setItem(STORAGE_KEY, JSON.stringify(parsed));
+        } catch {
+          // ignore write failures
+        }
+      }
+
+      return parsed;
     } catch {
       localStorage.removeItem(STORAGE_KEY);
     }
@@ -313,14 +329,24 @@ export function getVenues() {
     return acc;
   }, {});
 
-  return db.venue.map((venue) => ({
-    id: venue.venue_id,
-    name: venue.venue_name,
-    address: venue.address,
-    city: venue.city,
-    capacity: venue.capacity,
-    seating_type: seatByVenue[venue.venue_id] ? 'Reserved Seating' : 'Free Seating',
-  }));
+  return db.venue.map((venue) => {
+    const fallbackIsReserved = (seatByVenue[venue.venue_id] || 0) > 0;
+    const seatingType = venue.jenis_seating
+      ? String(venue.jenis_seating)
+      : fallbackIsReserved
+      ? 'RESERVED_SEATING'
+      : 'FREE_SEATING';
+
+    return {
+      id: venue.venue_id,
+      name: venue.venue_name,
+      address: venue.address,
+      city: venue.city,
+      capacity: Number(venue.capacity || 0),
+      seating_type: seatingType,
+      jenis_seating: venue.jenis_seating,
+    };
+  });
 }
 
 export function getEvents() {

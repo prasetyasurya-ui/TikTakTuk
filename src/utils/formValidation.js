@@ -61,3 +61,4 @@ export function isNonNegativeNumber(value) {
   const num = Number(value);
   return Number.isFinite(num) && num >= 0;
 }
+

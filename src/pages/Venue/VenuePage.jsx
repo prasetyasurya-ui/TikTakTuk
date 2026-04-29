@@ -18,7 +18,7 @@ const VenuePage = () => {
 
   const [formData, setFormData] = useState({
     name: "",
-    seating_type: "Reserved Seating",
+    seating_type: "RESERVED_SEATING",
     address: "",
     city: "",
     capacity: "",
@@ -56,7 +56,7 @@ const VenuePage = () => {
 
   const stats = {
     total: venues.length,
-    reserved: venues.filter(v => v.seating_type === "Reserved Seating").length,
+    reserved: venues.filter(v => v.seating_type === "RESERVED_SEATING").length,
     capacity: venues.reduce((acc, curr) => acc + curr.capacity, 0)
   };
 
@@ -116,7 +116,7 @@ const VenuePage = () => {
     setErrors({});
     setFormData({
       name: '',
-      seating_type: 'Reserved Seating',
+      seating_type: 'RESERVED_SEATING',
       address: '',
       city: '',
       capacity: '',
@@ -126,7 +126,7 @@ const VenuePage = () => {
   const openCreateModal = () => {
     setFormData({
       name: '',
-      seating_type: 'Reserved Seating',
+      seating_type: 'RESERVED_SEATING',
       address: '',
       city: '',
       capacity: '',
@@ -139,7 +139,7 @@ const VenuePage = () => {
   const openEditModal = (venue) => {
     setFormData({
       name: venue.name || '',
-      seating_type: venue.seating_type || 'Reserved Seating',
+      seating_type: venue.seating_type || 'RESERVED_SEATING',
       address: venue.address || '',
       city: venue.city || '',
       capacity: String(venue.capacity || ''),
@@ -174,7 +174,7 @@ const VenuePage = () => {
 
           <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
             <StatCard icon={<MapPin size={22}/>} label="Total Venue" value={stats.total} color="blue" />
-            <StatCard icon={<Ticket size={22}/>} label="Reserved Seating" value={stats.reserved} color="amber" />
+            <StatCard icon={<Ticket size={22}/>} label="RESERVED_SEATING" value={stats.reserved} color="amber" />
             <StatCard icon={<Users size={22}/>} label="Total Kapasitas" value={stats.capacity.toLocaleString()} color="emerald" />
           </div>
         </div>
@@ -207,8 +207,8 @@ const VenuePage = () => {
             onChange={(e) => setSelectedSeating(e.target.value)}
           >
             <option>Semua Tipe Seating</option>
-            <option>Reserved Seating</option>
-            <option>Free Seating</option>
+            <option>RESERVED_SEATING</option>
+            <option>FREE_SEATING</option>
           </select>
         </div>
 
@@ -220,7 +220,7 @@ const VenuePage = () => {
                 <div>
                   <div className="flex justify-between items-start mb-4">
                     <h2 className="text-xl font-bold text-slate-800 leading-tight">{venue.name}</h2>
-                    <span className={`text-[10px] uppercase tracking-wider font-bold px-2 py-1 rounded-md whitespace-nowrap ${venue.seating_type === 'Reserved Seating' ? 'bg-amber-50 text-amber-600' : 'bg-blue-50 text-blue-600'}`}>
+                    <span className={`text-[10px] uppercase tracking-wider font-bold px-2 py-1 rounded-md whitespace-nowrap ${venue.seating_type === 'RESERVED_SEATING' ? 'bg-amber-50 text-amber-600' : 'bg-blue-50 text-blue-600'}`}>
                       {venue.seating_type}
                     </span>
                   </div>
@@ -345,11 +345,11 @@ const VenuePage = () => {
                   <input
                     type="checkbox"
                     className="sr-only peer"
-                    checked={formData.seating_type === 'Reserved Seating'}
+                    checked={formData.seating_type === 'RESERVED_SEATING'}
                     onChange={(e) =>
                       setFormData((prev) => ({
                         ...prev,
-                        seating_type: e.target.checked ? 'Reserved Seating' : 'Free Seating',
+                        seating_type: e.target.checked ? 'RESERVED_SEATING' : 'FREE_SEATING',
                       }))
                     }
                   />

@@ -38,6 +38,10 @@ export function handleMockRequest(method, url, options = {}) {
     return { ok: true, events: getEvents() };
   }
 
+  if (method === 'GET' && url === '/venues') {
+    return { ok: true, venues: getVenues() };
+  }
+
   if (method === 'GET' && url === '/events/management') {
     return {
       ok: true,

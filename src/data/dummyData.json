@@ -50,11 +50,11 @@
     { "organizer_id": "org_004", "organizer_name": "Seni Teater Abadi", "contact_email": "halo@seniteater.id", "user_id": "usr_005" }
   ],
   "venue": [
-    { "venue_id": "ven_001", "venue_name": "Stadion Utama GBK", "capacity": 77000, "address": "Jl. Pintu Satu Senayan", "city": "Jakarta" },
-    { "venue_id": "ven_002", "venue_name": "Istora Senayan", "capacity": 7000, "address": "Kawasan GBK", "city": "Jakarta" },
-    { "venue_id": "ven_003", "venue_name": "JIEXPO Kemayoran", "capacity": 15000, "address": "Jl. Benyamin Suaeb", "city": "Jakarta" },
-    { "venue_id": "ven_004", "venue_name": "Taman Ismail Marzuki", "capacity": 1200, "address": "Jl. Cikini Raya", "city": "Jakarta" },
-    { "venue_id": "ven_005", "venue_name": "ICE BSD", "capacity": 10000, "address": "Jl. BSD Grand Boulevard", "city": "Tangerang" }
+    { "venue_id": "ven_001", "venue_name": "Stadion Utama GBK", "capacity": 77000, "address": "Jl. Pintu Satu Senayan", "city": "Jakarta", "jenis_seating": "FREE_SEATING" },
+    { "venue_id": "ven_002", "venue_name": "Istora Senayan", "capacity": 7000, "address": "Kawasan GBK", "city": "Jakarta", "jenis_seating": "FREE_SEATING" },
+    { "venue_id": "ven_003", "venue_name": "JIEXPO Kemayoran", "capacity": 15000, "address": "Jl. Benyamin Suaeb", "city": "Jakarta", "jenis_seating": "FREE_SEATING" },
+    { "venue_id": "ven_004", "venue_name": "Taman Ismail Marzuki", "capacity": 1200, "address": "Jl. Cikini Raya", "city": "Jakarta", "jenis_seating": "RESERVED_SEATING" },
+    { "venue_id": "ven_005", "venue_name": "ICE BSD", "capacity": 10000, "address": "Jl. BSD Grand Boulevard", "city": "Tangerang", "jenis_seating": "FREE_SEATING" }
   ],
   "seat": [
     { "seat_id": "seat_001", "section": "VIP", "seat_number": "S-1", "row_number": "R-1", "venue_id": "ven_001" },
