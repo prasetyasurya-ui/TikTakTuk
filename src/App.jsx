@@ -11,6 +11,7 @@ import EventPage from './pages/Event/EventPage';
 import EventManagementPage from './pages/Event/EventManagementPage';
 import ProfilePage from './pages/ProfilePage';
 import PlaceholderPage from './pages/PlaceholderPage';
+import AdminForm from './pages/register/AdminForm';
 
 function App() {
   return (
@@ -20,6 +21,7 @@ function App() {
         <Route path="/register" element={<RegisterPage />} />
         <Route path="/register/customer" element={<CustomerForm />} />
         <Route path="/register/organizer" element={<OrganizerForm />} />
+        <Route path="/register/admin" element={<AdminForm/>} />
 
         <Route path='/dashboard' element={<DashboardPage />} />
         <Route path='/dashboard/admin' element={<AdminDashboard />} />

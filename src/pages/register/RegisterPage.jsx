@@ -12,7 +12,7 @@ const RegisterPage = () => {
           <p className="text-slate-500 mt-4 text-lg">Pilih jenis akun yang sesuai dengan kebutuhan Anda</p>
         </div>
 
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
           {/* Opsi Customer */}
           <div
             onClick={() => navigate('/register/customer')}
@@ -40,6 +40,23 @@ const RegisterPage = () => {
             <p className="text-slate-500">Kelola venue, buat event pertunjukkan, dan pantau penjualan tiket Anda secara real-time.</p>
             <div className="mt-8 text-emerald-600 font-semibold flex items-center justify-center gap-2">
               Daftar sebagai Penyelenggara <span className="group-hover:translate-x-1 transition-transform">→</span>
+            </div>
+          </div>
+
+          {/* Opsi Administrator */}
+          <div
+            onClick={() => navigate('/register/admin')}
+            className="group flex flex-col justify-between cursor-pointer bg-white p-10 rounded-3xl border-2 border-transparent hover:border-emerald-500 shadow-sm hover:shadow-2xl transition-all duration-300 text-center"
+            >
+            <div>
+            <div className="w-20 h-20 bg-red-100 rounded-2xl flex items-center justify-center text-4xl mx-auto mb-6 group-hover:scale-110 transition-transform">
+              🛡️
+            </div>
+              <h2 className="text-2xl font-bold text-slate-800 mb-3">Administrator</h2>
+              <p className="text-slate-500">Kelola sistem dan pantau aktivitas platform.</p>
+            </div>
+            <div className="mt-8 text-red-600 font-semibold flex items-center justify-center gap-2">
+              Daftar sebagai Administrator <span className="group-hover:translate-x-1 transition-transform">→</span>
             </div>
           </div>
         </div>
