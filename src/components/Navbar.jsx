@@ -4,6 +4,10 @@ import { getCurrentSession, logout } from '../services/api';
 import NavLinkItem from './navigation/NavLinkItem';
 
 const NAV_LINKS = {
+  guest: [
+    { to: '/ticket-categories', label: 'Kategori Tiket', accessible: true },
+    { to: '/promotion', label: 'Promosi', accessible: true },
+  ],
   admin: [
     { to: '/venue', label: 'Manajemen Venue' },
     { to: '/manage-seats', label: 'Manajemen Kursi' },
@@ -44,11 +48,16 @@ const Navbar = () => {
   const isLoggedIn = session.isLoggedIn;
   const userRole = session.userRole;
   const userName = session.userName;
-  const roleLinks = NAV_LINKS[userRole] || [];
+  const roleLinks = NAV_LINKS[isLoggedIn ? userRole : 'guest'] || [];
 
   const handleLogout = async () => {
     await logout();
     navigate('/');
+  };
+
+  const handleInaccessibleClick = (e) => {
+    e.preventDefault();
+    alert('Harus login terlebih dahulu!');
   };
 
   return (
@@ -59,7 +68,7 @@ const Navbar = () => {
           
           {/* Logo */}
           <div className="flex-shrink-0">
-            <Link to="/dashboard" className="text-2xl font-bold text-blue-600 tracking-tighter">
+            <Link to={isLoggedIn ? "/dashboard" : "/"} className="text-2xl font-bold text-blue-600 tracking-tighter">
               TikTakTuk
             </Link>
           </div>
@@ -74,7 +83,17 @@ const Navbar = () => {
                 ))}
               </>
             ) : (
-              <NavLinkItem to="/explore" label="Jelajahi Event" />
+              <>
+                {roleLinks.map((item) => (
+                  item.accessible ? (
+                    <NavLinkItem key={`guest-${item.label}`} to={item.to} label={item.label} />
+                  ) : (
+                    <a href="#" key={`guest-${item.label}`} onClick={handleInaccessibleClick} className="text-slate-600 hover:text-blue-600 font-bold text-sm whitespace-nowrap">
+                      {item.label}
+                    </a>
+                  )
+                ))}
+              </>
             )}
           </div>
 
@@ -95,7 +114,7 @@ const Navbar = () => {
               </div>
             ) : (
               <div className="flex items-center space-x-3">
-                <Link to="/" className="text-slate-600 hover:text-blue-600 font-bold text-sm">Masuk</Link>
+                <Link to="/login" className="text-slate-600 hover:text-blue-600 font-bold text-sm">Masuk</Link>
                 <Link 
                   to="/register"
                   className="bg-blue-600 hover:bg-blue-700 text-white px-5 py-2 rounded-lg text-sm font-bold shadow-md shadow-blue-100 transition-all active:scale-95"
