@@ -5,12 +5,20 @@ import Navbar from "../../components/Navbar";
 import PanelCard from "../../components/ui/PanelCard";
 import StatCard from "../../components/ui/StatCard";
 import { getCurrentSession } from "../../services/api";
+
+// Import from the Management API
 import {
   fetchManageTicketsData,
   fetchAvailableSeatsForTicket,
   updateTicket,
   deleteTicket
 } from "../../services/api/ticketManagementApi";
+
+// Reuse the Create Ticket logic we already built for the Asset page!
+import {
+  fetchCreateTicketFormData,
+  createTicketAsset
+} from "../../services/api/ticketAssetApi";
 
 function ModalShell({ title, onClose, children }) {
   return (
@@ -31,7 +39,6 @@ function ModalShell({ title, onClose, children }) {
 
 const TicketManagementPage = () => {
   const session = getCurrentSession();
-  // Safe check for admin role, ensuring it works regardless of capitalization
   const isAdmin = String(session?.userRole || '').toLowerCase() === 'admin';
 
   const [tickets, setTickets] = useState([]);
@@ -40,10 +47,15 @@ const TicketManagementPage = () => {
   const [statusFilter, setStatusFilter] = useState('Semua Status');
   const [banner, setBanner] = useState(null);
 
-  // Modal States
+  // Update & Delete Modal States
   const [modalConfig, setModalConfig] = useState({ type: null, ticket: null });
   const [updateForm, setUpdateForm] = useState({ status: '', seatId: '' });
   const [availableSeats, setAvailableSeats] = useState([]);
+
+  // Create Modal States
+  const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
+  const [createOptions, setCreateOptions] = useState({ orders: [], categories: [], seats: [] });
+  const [createForm, setCreateForm] = useState({ orderId: '', categoryId: '', seatId: '' });
 
   const loadTickets = async () => {
     setLoading(true);
@@ -72,12 +84,41 @@ const TicketManagementPage = () => {
   const validTickets = tickets.filter(t => t.status === 'VALID').length;
   const usedTickets = tickets.filter(t => t.status === 'TERPAKAI').length;
 
-  // Handlers
+  // --- HANDLERS: CREATE ---
+  const openCreateModal = async () => {
+    setIsCreateModalOpen(true);
+    setCreateForm({ orderId: '', categoryId: '', seatId: '' });
+    // Fetch dropdown options for Create
+    const options = await fetchCreateTicketFormData({ userRole: session?.userRole, userId: session?.userId });
+    setCreateOptions(options);
+  };
+
+  const handleCreateOrderChange = (e) => {
+    setCreateForm({ orderId: e.target.value, categoryId: '', seatId: '' });
+  };
+
+  const handleCreateSubmit = async () => {
+    setBanner(null);
+    const result = await createTicketAsset(createForm);
+    if (result.ok) {
+      setBanner({ type: 'success', message: result.message });
+      setIsCreateModalOpen(false);
+      loadTickets();
+    } else {
+      setBanner({ type: 'error', message: result.message });
+    }
+  };
+
+  // Dynamic values for Create Form
+  const activeCreateOrder = createOptions.orders.find(o => o.id === createForm.orderId);
+  const isCreateReservedSeating = activeCreateOrder?.seatingType === 'RESERVED_SEATING';
+  const availableCreateCategories = createOptions.categories.filter(c => c.eventId === activeCreateOrder?.eventId);
+  const availableCreateSeats = createOptions.seats.filter(s => s.venueId === activeCreateOrder?.venueId);
+
+  // --- HANDLERS: UPDATE & DELETE ---
   const openUpdateModal = async (ticket) => {
     setModalConfig({ type: 'update', ticket });
     setUpdateForm({ status: ticket.status, seatId: ticket.seatId });
-
-    // Fetch seats for dropdown
     const seats = await fetchAvailableSeatsForTicket(ticket.venueId, ticket.seatId);
     setAvailableSeats(seats);
   };
@@ -119,7 +160,10 @@ const TicketManagementPage = () => {
             <p className="text-sm text-slate-500">Kelola tiket: tambah, ubah status, dan hapus tiket</p>
           </div>
           {isAdmin && (
-            <button className="inline-flex items-center gap-2 bg-blue-600 hover:bg-blue-700 text-white font-bold px-5 py-2.5 rounded-full transition-all shadow-sm active:scale-95 text-sm">
+            <button
+              onClick={openCreateModal}
+              className="inline-flex items-center gap-2 bg-blue-600 hover:bg-blue-700 text-white font-bold px-5 py-2.5 rounded-full transition-all shadow-sm active:scale-95 text-sm"
+            >
               <Plus size={16} /> Tambah Tiket
             </button>
           )}
@@ -234,7 +278,6 @@ const TicketManagementPage = () => {
                   </div>
                 </div>
 
-                {/* ONLY SHOWS FOR ADMIN */}
                 {isAdmin && (
                   <div className="flex items-center gap-3 pt-4 border-t border-slate-100">
                     <button
@@ -256,6 +299,86 @@ const TicketManagementPage = () => {
           )}
         </div>
       </main>
+
+      {/* CREATE MODAL */}
+      {isCreateModalOpen && (
+        <ModalShell title="Tambah Tiket Baru" onClose={() => setIsCreateModalOpen(false)}>
+          <div className="space-y-5">
+            <div>
+              <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1.5">Order</label>
+              <select
+                value={createForm.orderId}
+                onChange={handleCreateOrderChange}
+                className="w-full px-4 py-3 rounded-xl border border-slate-200 bg-white outline-none text-sm focus:ring-2 focus:ring-blue-500 font-medium cursor-pointer"
+              >
+                <option value="" disabled>Pilih Order</option>
+                {createOptions.orders.map(o => (
+                  <option key={o.id} value={o.id}>{o.displayLabel}</option>
+                ))}
+              </select>
+            </div>
+
+            <div>
+              <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1.5">Kategori Tiket</label>
+              <select
+                value={createForm.categoryId}
+                onChange={e => setCreateForm({...createForm, categoryId: e.target.value})}
+                disabled={!createForm.orderId}
+                className="w-full px-4 py-3 rounded-xl border border-slate-200 bg-white outline-none text-sm focus:ring-2 focus:ring-blue-500 font-medium disabled:bg-slate-50 disabled:text-slate-400 cursor-pointer"
+              >
+                <option value="" disabled>Pilih Kategori</option>
+                {availableCreateCategories.map(c => (
+                  <option key={c.id} value={c.id} disabled={c.isFull}>
+                    {c.displayLabel}
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            {isCreateReservedSeating && (
+              <div>
+                <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1.5">Kursi (opsional)</label>
+                <select
+                  value={createForm.seatId}
+                  onChange={e => setCreateForm({...createForm, seatId: e.target.value})}
+                  className="w-full px-4 py-3 rounded-xl border border-slate-200 bg-white outline-none text-sm focus:ring-2 focus:ring-blue-500 font-medium cursor-pointer"
+                >
+                  <option value="">Pilih Kursi (Kosongkan jika bebas)</option>
+                  {availableCreateSeats.map(s => (
+                    <option key={s.id} value={s.id}>{s.displayLabel}</option>
+                  ))}
+                </select>
+              </div>
+            )}
+
+            <div>
+              <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1.5">Kode Tiket</label>
+              <input
+                type="text"
+                disabled
+                value="Auto-generate saat dibuat"
+                className="w-full px-4 py-3 rounded-xl border border-slate-100 bg-slate-50 outline-none text-sm text-slate-400 font-mono"
+              />
+            </div>
+
+            <div className="flex gap-3 pt-4 mt-2">
+              <button
+                onClick={() => setIsCreateModalOpen(false)}
+                className="flex-1 py-3 rounded-xl border border-slate-200 text-slate-700 font-bold hover:bg-slate-50 transition-colors"
+              >
+                Batal
+              </button>
+              <button
+                onClick={handleCreateSubmit}
+                disabled={!createForm.orderId || !createForm.categoryId}
+                className="flex-1 py-3 rounded-xl bg-blue-600 text-white font-bold hover:bg-blue-700 transition-colors shadow-md shadow-blue-200 disabled:bg-slate-300 disabled:shadow-none disabled:cursor-not-allowed"
+              >
+                Buat Tiket
+              </button>
+            </div>
+          </div>
+        </ModalShell>
+      )}
 
       {/* UPDATE MODAL */}
       {modalConfig.type === 'update' && modalConfig.ticket && (
