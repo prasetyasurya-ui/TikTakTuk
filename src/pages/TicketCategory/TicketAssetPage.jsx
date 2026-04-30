@@ -107,7 +107,7 @@ const TicketAssetPage = () => {
         {/* Header */}
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-8">
           <div>
-            <h1 className="text-3xl font-bold tracking-tight">Manajemen Tiket</h1>
+            <h1 className="text-3xl font-bold tracking-tight">Asset Tickets</h1>
             <p className="text-slate-500 mt-1">Kelola data aset tiket pelanggan</p>
           </div>
           {canEdit && (
