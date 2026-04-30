@@ -622,15 +622,31 @@ export function getCustomerDashboardData(userId) {
 // --- Artist ---
 export function getArtistsData() {
   const db = loadDb();
-  return db.artist.sort((a, b) => a.name.localeCompare(b.name));
+  const eventArtistCounts = db.event_artist.reduce((acc, ea) => {
+    acc[ea.artist_id] = (acc[ea.artist_id] || 0) + 1;
+    return acc;
+  }, {});
+
+  // Filter out artists with missing names and map with event counts
+  const artists = db.artist
+    .filter(a => a && a.name) // Filter out invalid entries
+    .map(a => ({
+      ...a,
+      event_count: eventArtistCounts[a.artist_id] || 0
+    }))
+    .sort((a, b) => (a.name || '').localeCompare(b.name || ''));
+  
+  return artists;
 }
 
 export function createArtistData(payload) {
   const db = loadDb();
+  // Handle nested data structure from API
+  const data = payload.data || payload;
   const newArtist = {
     artist_id: `art_${Date.now()}`,
-    name: payload.name,
-    genre: payload.genre || '',
+    name: data.name,
+    genre: data.genre || '',
   };
   db.artist.push(newArtist);
   saveDb(db);
@@ -639,10 +655,12 @@ export function createArtistData(payload) {
 
 export function updateArtistData(id, payload) {
   const db = loadDb();
+  // Handle nested data structure from API
+  const data = payload.data || payload;
   const index = db.artist.findIndex((a) => a.artist_id === id);
   if (index === -1) return { ok: false, message: 'Artist tidak ditemukan.' };
 
-  db.artist[index] = { ...db.artist[index], ...payload };
+  db.artist[index] = { ...db.artist[index], ...data };
   saveDb(db);
   return { ok: true, data: db.artist[index] };
 }
