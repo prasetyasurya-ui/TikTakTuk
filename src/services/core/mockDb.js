@@ -52,7 +52,7 @@ export function loadDb() {
   return initial;
 }
 
-function saveDb(db) {
+export function saveDb(db) {
   localStorage.setItem(STORAGE_KEY, JSON.stringify(db));
 }
 
