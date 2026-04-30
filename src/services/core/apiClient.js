@@ -27,4 +27,10 @@ export const apiClient = {
   post(url, data = {}, options = {}) {
     return request('POST', url, { ...options, data });
   },
+  put(url, data = {}, options = {}) {
+    return request('PUT', url, { ...options, data });
+  },
+  delete(url, options = {}) {
+    return request('DELETE', url, options);
+  },
 };

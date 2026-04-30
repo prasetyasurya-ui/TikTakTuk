@@ -20,8 +20,8 @@ const ArtistPage = () => {
   const loadArtists = async () => {
     setIsLoading(true);
     const result = await artistApi.getArtists();
-    if (result.ok) {
-      setArtists(result.data);
+    if (result.data?.ok) {
+      setArtists(result.data.data);
     }
     setIsLoading(false);
   };

@@ -31,8 +31,8 @@ const TicketCategoryPage = () => {
       fetchEvents()
     ]);
     
-    if (catResult.ok) {
-      setCategories(catResult.data);
+    if (catResult.data?.ok) {
+      setCategories(catResult.data.data);
     }
     setEvents(eventList);
     setIsLoading(false);
