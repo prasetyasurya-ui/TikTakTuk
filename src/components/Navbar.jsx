@@ -35,6 +35,7 @@ const NAV_LINKS = {
     { to: '/manage-event', label: 'Event Saya' },
     { to: '/venue', label: 'Manajemen Venue' },
     { to: '/manage-seats', label: 'Manajemen Kursi' },
+    { to: '/artist', label: 'Manajemen Artis' },
     { to: '/ticket-categories', label: 'Kategori Tiket' },
     { to: '/manage-tickets', label: 'Manajemen Tiket' },
     { to: '/orders', label: 'Daftar Order' },

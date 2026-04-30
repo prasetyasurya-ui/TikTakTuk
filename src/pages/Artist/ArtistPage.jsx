@@ -319,7 +319,7 @@ const ArtistPage = () => {
                   id="input-artist-name"
                   type="text" 
                   className={`w-full px-4 py-3 rounded-xl border ${errors.name ? 'border-red-300 focus:ring-red-500/20 focus:border-red-400' : 'border-slate-200 focus:ring-blue-500/20 focus:border-blue-400'} focus:ring-2 outline-none transition-all text-sm placeholder:text-slate-300`}
-                  placeholder="cth. Fourtwnty"
+                  placeholder="cth. Zutomayo"
                   value={formData.name}
                   onChange={(e) => setFormData((prev) => ({ ...prev, name: e.target.value }))}
                   maxLength={SQL_MAX_LENGTH.ARTIST_NAME}
@@ -333,7 +333,7 @@ const ArtistPage = () => {
                   id="input-artist-genre"
                   type="text" 
                   className={`w-full px-4 py-3 rounded-xl border ${errors.genre ? 'border-red-300 focus:ring-red-500/20 focus:border-red-400' : 'border-slate-200 focus:ring-blue-500/20 focus:border-blue-400'} focus:ring-2 outline-none transition-all text-sm placeholder:text-slate-300`}
-                  placeholder="cth. Indie Folk"
+                  placeholder="cth. Pop"
                   maxLength={SQL_MAX_LENGTH.GENRE}
                   value={formData.genre}
                   onChange={(e) => setFormData((prev) => ({ ...prev, genre: e.target.value }))}
