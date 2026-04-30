@@ -14,6 +14,8 @@ import PlaceholderPage from './pages/PlaceholderPage';
 import AdminForm from './pages/register/AdminForm';
 import OrderPage from './pages/order/OrderPage';
 import AssetOrdersPage from './pages/order/AssetOrdersPage';
+import ArtistPage from './pages/Artist/ArtistPage';
+import TicketCategoryPage from './pages/TicketCategory/TicketCategoryPage';
 
 function App() {
   return (
@@ -34,14 +36,14 @@ function App() {
         <Route path='/event' element={<EventPage />} />
         <Route path='/profile' element={<ProfilePage />} />
         <Route path='/manage-seats' element={<PlaceholderPage />} />
-        <Route path='/ticket-categories' element={<PlaceholderPage />} />
+        <Route path='/ticket-categories' element={<TicketCategoryPage />} />
         <Route path='/manage-tickets' element={<PlaceholderPage />} />
         <Route path='/orders' element={<OrderPage />} />
         <Route path='/asset-tickets' element={<PlaceholderPage />} />
         <Route path='/asset-orders' element={<AssetOrdersPage />} />
         <Route path='/my-tickets' element={<PlaceholderPage />} />
         <Route path='/promotion' element={<PlaceholderPage />} />
-        <Route path='/artist' element={<PlaceholderPage />} />
+        <Route path='/artist' element={<ArtistPage />} />
         <Route path='/explore' element={<EventPage />} />
 
       </Routes>

@@ -12,6 +12,8 @@ export const SQL_MAX_LENGTH = {
   CITY: 100,
   EVENT_TITLE: 200,
   CATEGORY_NAME: 50,
+  ARTIST_NAME: 100,
+  GENRE: 100,
 };
 
 export function normalizeText(value) {
