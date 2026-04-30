@@ -20,6 +20,7 @@ import TicketCategoryPage from './pages/TicketCategory/TicketCategoryPage';
 import CheckoutPage from './pages/order/CheckoutPage';
 import PromotionPage from './pages/promotion/PromotionPage';
 import MyTicketsPage from './pages/TicketCategory/MyTicketPage';
+import SeatManagementPage from './pages/seat/SeatManagementPage';
 
 function App() {
   return (
@@ -40,7 +41,7 @@ function App() {
         <Route path='/manage-event' element={<EventManagementPage />} />
         <Route path='/event' element={<EventPage />} />
         <Route path='/profile' element={<ProfilePage />} />
-        <Route path='/manage-seats' element={<PlaceholderPage />} />
+        <Route path='/manage-seats' element={<SeatManagementPage />} />
         <Route path='/ticket-categories' element={<TicketCategoryPage />} />
         <Route path='/manage-tickets' element={<PlaceholderPage />} />
         <Route path='/orders' element={<OrderPage />} />
