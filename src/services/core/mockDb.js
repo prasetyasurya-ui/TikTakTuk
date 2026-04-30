@@ -618,3 +618,150 @@ export function getCustomerDashboardData(userId) {
     upcoming_tickets,
   };
 }
+
+// --- Artist ---
+export function getArtistsData() {
+  const db = loadDb();
+  const eventArtistCounts = db.event_artist.reduce((acc, ea) => {
+    acc[ea.artist_id] = (acc[ea.artist_id] || 0) + 1;
+    return acc;
+  }, {});
+
+  // Filter out artists with missing names and map with event counts
+  const artists = db.artist
+    .filter(a => a && a.name) // Filter out invalid entries
+    .map(a => ({
+      ...a,
+      event_count: eventArtistCounts[a.artist_id] || 0
+    }))
+    .sort((a, b) => (a.name || '').localeCompare(b.name || ''));
+  
+  return artists;
+}
+
+export function createArtistData(payload) {
+  const db = loadDb();
+  // Handle nested data structure from API
+  const data = payload.data || payload;
+  const newArtist = {
+    artist_id: `art_${Date.now()}`,
+    name: data.name,
+    genre: data.genre || '',
+  };
+  db.artist.push(newArtist);
+  saveDb(db);
+  return { ok: true, data: newArtist };
+}
+
+export function updateArtistData(id, payload) {
+  const db = loadDb();
+  // Handle nested data structure from API
+  const data = payload.data || payload;
+  const index = db.artist.findIndex((a) => a.artist_id === id);
+  if (index === -1) return { ok: false, message: 'Artist tidak ditemukan.' };
+
+  db.artist[index] = { ...db.artist[index], ...data };
+  saveDb(db);
+  return { ok: true, data: db.artist[index] };
+}
+
+export function deleteArtistData(id) {
+  const db = loadDb();
+  db.artist = db.artist.filter((a) => a.artist_id !== id);
+  // Also cleanup event_artist relations
+  db.event_artist = db.event_artist.filter((ea) => ea.artist_id !== id);
+  saveDb(db);
+  return { ok: true, message: 'Artist berhasil dihapus.' };
+}
+
+// --- Ticket Category ---
+export function getTicketCategoriesData() {
+  const db = loadDb();
+  const eventMap = new Map(db.event.map((e) => [e.event_id, e.event_title]));
+  
+  return db.ticket_category
+    .map((cat) => ({
+      ...cat,
+      event_name: eventMap.get(cat.tevent_id) || '-',
+    }))
+    .sort((a, b) => {
+      const eventCompare = a.event_name.localeCompare(b.event_name);
+      if (eventCompare !== 0) return eventCompare;
+      return a.category_name.localeCompare(b.category_name);
+    });
+}
+
+export function createTicketCategoryData(payload) {
+  const db = loadDb();
+  
+  // Validation: Total quota for an event cannot exceed venue capacity
+  const event = db.event.find(e => e.event_id === payload.tevent_id);
+  if (!event) return { ok: false, message: 'Event tidak ditemukan.' };
+  
+  const venue = db.venue.find(v => v.venue_id === event.venue_id);
+  if (!venue) return { ok: false, message: 'Venue tidak ditemukan.' };
+  
+  const existingQuota = db.ticket_category
+    .filter(c => c.tevent_id === payload.tevent_id)
+    .reduce((sum, c) => sum + Number(c.quota), 0);
+    
+  if (existingQuota + Number(payload.quota) > venue.capacity) {
+    return { 
+      ok: false, 
+      message: `Total kuota (${existingQuota + Number(payload.quota)}) melebihi kapasitas venue ${venue.venue_name} (${venue.capacity}).` 
+    };
+  }
+
+  const newCategory = {
+    category_id: `cat_${Date.now()}`,
+    category_name: payload.category_name,
+    quota: Number(payload.quota),
+    price: Number(payload.price),
+    tevent_id: payload.tevent_id,
+  };
+  
+  db.ticket_category.push(newCategory);
+  saveDb(db);
+  return { ok: true, data: newCategory };
+}
+
+export function updateTicketCategoryData(id, payload) {
+  const db = loadDb();
+  const index = db.ticket_category.findIndex((c) => c.category_id === id);
+  if (index === -1) return { ok: false, message: 'Kategori tiket tidak ditemukan.' };
+
+  const cat = db.ticket_category[index];
+  
+  // If quota is being updated, validate against venue capacity
+  if (payload.quota !== undefined) {
+    const event = db.event.find(e => e.event_id === cat.tevent_id);
+    const venue = db.venue.find(v => v.venue_id === event.venue_id);
+    
+    const otherQuota = db.ticket_category
+      .filter(c => c.tevent_id === cat.tevent_id && c.category_id !== id)
+      .reduce((sum, c) => sum + Number(c.quota), 0);
+      
+    if (otherQuota + Number(payload.quota) > venue.capacity) {
+      return { 
+        ok: false, 
+        message: `Total kuota (${otherQuota + Number(payload.quota)}) melebihi kapasitas venue ${venue.venue_name} (${venue.capacity}).` 
+      };
+    }
+  }
+
+  db.ticket_category[index] = { ...cat, ...payload };
+  saveDb(db);
+  return { ok: true, data: db.ticket_category[index] };
+}
+
+export function deleteTicketCategoryData(id) {
+  const db = loadDb();
+  // Check if there are tickets using this category
+  if (db.ticket.some(t => t.tcategory_id === id)) {
+    return { ok: false, message: 'Kategori tidak bisa dihapus karena sudah ada tiket yang terbit.' };
+  }
+  
+  db.ticket_category = db.ticket_category.filter((c) => c.category_id !== id);
+  saveDb(db);
+  return { ok: true, message: 'Kategori tiket berhasil dihapus.' };
+}

@@ -4,3 +4,5 @@ export * from './venueApi';
 export * from './dashboardApi';
 export * from './profileApi';
 export * from './ordersApi';
+export * from './artistApi';
+export * from './ticketCategoryApi';

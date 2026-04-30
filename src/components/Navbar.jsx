@@ -7,6 +7,7 @@ const NAV_LINKS = {
   admin: [
     { to: '/venue', label: 'Manajemen Venue' },
     { to: '/manage-seats', label: 'Manajemen Kursi' },
+    { to: '/artist', label: 'Manajemen Artis' },
     { to: '/ticket-categories', label: 'Kategori Tiket' },
     { to: '/manage-tickets', label: 'Manajemen Tiket' },
     { to: '/orders', label: 'Semua Order' },
@@ -22,6 +23,7 @@ const NAV_LINKS = {
     { to: '/promotion', label: 'Promosi' },
     { to: '/venue', label: 'Venue' },
     { to: '/artist', label: 'Artis' },
+    { to: '/ticket-categories', label: 'Kategori Tiket' },
     { to: '/profile', label: 'Profile' },
   ],
   organizer: [

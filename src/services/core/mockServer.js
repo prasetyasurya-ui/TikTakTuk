@@ -12,10 +12,54 @@ import {
   getProfileData,
   updateProfileData,
   changePasswordData,
+  getArtistsData,
+  createArtistData,
+  updateArtistData,
+  deleteArtistData,
+  getTicketCategoriesData,
+  createTicketCategoryData,
+  updateTicketCategoryData,
+  deleteTicketCategoryData,
 } from './mockDb';
 
 export function handleMockRequest(method, url, options = {}) {
   const { params = {}, data } = options;
+
+  if (method === 'GET' && url === '/artists') {
+    return { ok: true, data: getArtistsData() };
+  }
+
+  if (method === 'POST' && url === '/artists') {
+    return createArtistData(data);
+  }
+
+  if (method === 'PUT' && url.startsWith('/artists/')) {
+    const id = url.split('/').pop();
+    return updateArtistData(id, data);
+  }
+
+  if (method === 'DELETE' && url.startsWith('/artists/')) {
+    const id = url.split('/').pop();
+    return deleteArtistData(id);
+  }
+
+  if (method === 'GET' && url === '/ticket-categories') {
+    return { ok: true, data: getTicketCategoriesData() };
+  }
+
+  if (method === 'POST' && url === '/ticket-categories') {
+    return createTicketCategoryData(data);
+  }
+
+  if (method === 'PUT' && url.startsWith('/ticket-categories/')) {
+    const id = url.split('/').pop();
+    return updateTicketCategoryData(id, data);
+  }
+
+  if (method === 'DELETE' && url.startsWith('/ticket-categories/')) {
+    const id = url.split('/').pop();
+    return deleteTicketCategoryData(id);
+  }
 
   if (method === 'POST' && url === '/auth/login') {
     return loginWithDummy(data.username, data.password);
