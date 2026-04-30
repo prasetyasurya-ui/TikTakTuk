@@ -21,6 +21,7 @@ import CheckoutPage from './pages/order/CheckoutPage';
 import PromotionPage from './pages/promotion/PromotionPage';
 import MyTicketsPage from './pages/TicketCategory/MyTicketPage';
 import SeatManagementPage from './pages/seat/SeatManagementPage';
+import TicketAssetPage from './pages/TicketCategory/TicketAssetPage';
 
 function App() {
   return (
@@ -46,7 +47,7 @@ function App() {
         <Route path='/manage-tickets' element={<PlaceholderPage />} />
         <Route path='/orders' element={<OrderPage />} />
         <Route path='/checkout/:eventId' element={<CheckoutPage />} />
-        <Route path='/asset-tickets' element={<PlaceholderPage />} />
+        <Route path='/asset-tickets' element={<TicketAssetPage />} />
         <Route path='/asset-orders' element={<AssetOrdersPage />} />
         <Route path='/my-tickets' element={<MyTicketsPage />} />
         <Route path='/promotion' element={<PromotionPage />} />
