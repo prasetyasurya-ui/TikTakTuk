@@ -5,8 +5,9 @@ import NavLinkItem from './navigation/NavLinkItem';
 
 const NAV_LINKS = {
   guest: [
-    { to: '/ticket-categories', label: 'Kategori Tiket', accessible: true },
+    { to: '/explore', label: 'Jelajahi Event', accessible: true },
     { to: '/promotion', label: 'Promosi', accessible: true },
+    { to: '/ticket-categories', label: 'Kategori Tiket', accessible: true },
   ],
   admin: [
     { to: '/venue', label: 'Manajemen Venue' },
@@ -15,6 +16,7 @@ const NAV_LINKS = {
     { to: '/ticket-categories', label: 'Kategori Tiket' },
     { to: '/manage-tickets', label: 'Manajemen Tiket' },
     { to: '/orders', label: 'Semua Order' },
+    { to: '/promotion', label: 'Promosi' },
     { to: '/asset-tickets', label: 'Tiket (Aset)' },
     { to: '/asset-orders', label: 'Order (Aset)' },
     { to: '/profile', label: 'Profile' },
@@ -35,6 +37,8 @@ const NAV_LINKS = {
     { to: '/manage-seats', label: 'Manajemen Kursi' },
     { to: '/ticket-categories', label: 'Kategori Tiket' },
     { to: '/manage-tickets', label: 'Manajemen Tiket' },
+    { to: '/orders', label: 'Daftar Order' },
+    { to: '/promotion', label: 'Promosi' },
     { to: '/asset-tickets', label: 'Tiket (Aset)' },
     { to: '/asset-orders', label: 'Order (Aset)' },
     { to: '/profile', label: 'Profile' },

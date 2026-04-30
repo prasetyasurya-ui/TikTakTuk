@@ -17,6 +17,8 @@ import OrderPage from './pages/order/OrderPage';
 import AssetOrdersPage from './pages/order/AssetOrdersPage';
 import ArtistPage from './pages/Artist/ArtistPage';
 import TicketCategoryPage from './pages/TicketCategory/TicketCategoryPage';
+import CheckoutPage from './pages/order/CheckoutPage';
+import PromotionPage from './pages/promotion/PromotionPage';
 
 function App() {
   return (
@@ -41,10 +43,11 @@ function App() {
         <Route path='/ticket-categories' element={<TicketCategoryPage />} />
         <Route path='/manage-tickets' element={<PlaceholderPage />} />
         <Route path='/orders' element={<OrderPage />} />
+        <Route path='/checkout/:eventId' element={<CheckoutPage />} />
         <Route path='/asset-tickets' element={<PlaceholderPage />} />
         <Route path='/asset-orders' element={<AssetOrdersPage />} />
         <Route path='/my-tickets' element={<PlaceholderPage />} />
-        <Route path='/promotion' element={<PlaceholderPage />} />
+        <Route path='/promotion' element={<PromotionPage />} />
         <Route path='/artist' element={<ArtistPage />} />
         <Route path='/explore' element={<EventPage />} />
 

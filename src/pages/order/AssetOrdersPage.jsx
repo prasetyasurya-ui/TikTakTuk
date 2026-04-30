@@ -2,6 +2,7 @@ import React, { useEffect, useMemo, useState } from 'react';
 import { ChevronDown } from 'lucide-react';
 import Navbar from '../../components/Navbar';
 import PanelCard from '../../components/ui/PanelCard';
+import { getCurrentSession } from '../../services/api';
 import { fetchAssetOrders } from '../../services/api/assetOrdersApi';
 
 function formatIDR(value) {
@@ -72,6 +73,7 @@ function MiniStat({ label, value, valueClassName = 'text-slate-900' }) {
 }
 
 const AssetOrdersPage = () => {
+  const session = getCurrentSession();
   const [orders, setOrders] = useState([]);
   const [expandedOrderId, setExpandedOrderId] = useState('');
   const [isLoading, setIsLoading] = useState(true);
@@ -79,13 +81,13 @@ const AssetOrdersPage = () => {
   useEffect(() => {
     const load = async () => {
       setIsLoading(true);
-      const data = await fetchAssetOrders();
+      const data = await fetchAssetOrders({ userRole: session.userRole, userId: session.userId });
       setOrders(Array.isArray(data) ? data : []);
       setIsLoading(false);
     };
 
     load();
-  }, []);
+  }, [session.userId, session.userRole]);
 
   const totalRevenue = useMemo(() => {
     return orders.reduce((sum, order) => sum + (Number(order.totalAmount) || 0), 0);
