@@ -2,11 +2,17 @@ import express from 'express';
 import dotenv from 'dotenv';
 import bcrypt from 'bcrypt';
 import jwt from 'jsonwebtoken';
+import cors from 'cors';
 import { query } from './server/db.js';
 
 dotenv.config();
 
 const app = express();
+const allowedOrigins = (process.env.CORS_ORIGIN || '').split(',').map((origin) => origin.trim()).filter(Boolean);
+
+app.use(cors({
+  origin: allowedOrigins.length > 0 ? allowedOrigins : true,
+}));
 app.use(express.json());
 
 const PORT = process.env.PORT || 3000;
@@ -22,18 +28,17 @@ app.get('/api/health', async (req, res) => {
 });
 
 // Register user
-app.post('/api/auth/register', async (req, res) => {
-  const { username, password, role } = req.body;
+async function registerAccount(req, res, roleOverride) {
+  const { username, password } = req.body;
+  const role = roleOverride || req.body.role;
 
   if (!username || !password || !role) return res.status(400).json({ error: 'Missing fields' });
 
-  // Username only alphanumeric
   if (!/^[A-Za-z0-9]+$/.test(username)) {
     return res.status(400).json({ error: `ERROR: Username "${username}" hanya boleh mengandung huruf dan angka tanpa simbol atau spasi.` });
   }
 
   try {
-    // Case-insensitive check
     const exists = await query('SELECT user_id FROM TIKTAKTUK.USER_ACCOUNT WHERE LOWER(username) = LOWER($1)', [username]);
     if (exists.rowCount > 0) {
       return res.status(400).json({ error: `ERROR: Username "${username}" sudah terdaftar, gunakan username lain.` });
@@ -43,7 +48,6 @@ app.post('/api/auth/register', async (req, res) => {
     const insert = await query('INSERT INTO TIKTAKTUK.USER_ACCOUNT (username, password) VALUES ($1, $2) RETURNING user_id, username', [username, hashed]);
     const user = insert.rows[0];
 
-    // Ensure role exists
     const roleRes = await query('SELECT role_id FROM TIKTAKTUK.ROLE WHERE LOWER(role_name)=LOWER($1)', [role]);
     let roleId;
     if (roleRes.rowCount === 0) {
@@ -59,7 +63,11 @@ app.post('/api/auth/register', async (req, res) => {
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
-});
+}
+
+app.post('/api/auth/register', async (req, res) => registerAccount(req, res));
+app.post('/api/auth/register/customer', async (req, res) => registerAccount(req, res, 'customer'));
+app.post('/api/auth/register/organizer', async (req, res) => registerAccount(req, res, 'organizer'));
 
 // Login
 app.post('/api/auth/login', async (req, res) => {

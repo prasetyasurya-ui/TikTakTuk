@@ -103,3 +103,28 @@ src/
 - `npm run dev` - menjalankan app mode development
 - `npm run build` - build production
 - `npm run preview` - preview hasil build
+
+## Deploy
+
+### Backend ke Koyeb
+
+1. Buat app baru di Koyeb dari repository ini.
+2. Set build command ke `npm install`.
+3. Set run command ke `npm start`.
+4. Tambahkan environment variables:
+  - `DATABASE_URL` = connection string PostgreSQL
+  - `JWT_SECRET` = secret untuk token login
+  - `CORS_ORIGIN` = URL frontend Vercel, misalnya `https://namafrontend.vercel.app`
+5. Pastikan Koyeb memakai port dari environment `PORT` yang disediakan platform.
+
+### Frontend ke Vercel
+
+1. Import repository yang sama ke Vercel.
+2. Set build command ke `npm run build`.
+3. Set output directory ke `dist`.
+4. Tambahkan environment variables:
+  - `VITE_API_URL` = URL backend Koyeb, misalnya `https://namabackend.koyeb.app/api`
+  - `VITE_USE_MOCK` = `false` kalau ingin pakai backend real
+5. Deploy ulang setiap kali backend URL berubah.
+
+Catatan: frontend saat ini masih punya beberapa endpoint mock yang belum sepenuhnya sama dengan backend Express. Kalau setelah deploy ada halaman yang error, berarti endpoint frontend-nya masih perlu diselaraskan ke backend nyata.
