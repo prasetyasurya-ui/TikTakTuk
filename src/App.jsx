@@ -1,121 +1,63 @@
-import { useState } from 'react'
-import reactLogo from './assets/react.svg'
-import viteLogo from './assets/vite.svg'
-import heroImg from './assets/hero.png'
-import './App.css'
+import { BrowserRouter, Routes, Route } from 'react-router-dom';
+import LandingPage from './pages/LandingPage';
+import LoginPage from './pages/LoginPage';
+import RegisterPage from "./pages/register/RegisterPage";
+import CustomerForm from "./pages/register/CustomerForm";
+import OrganizerForm from "./pages/register/OrganizerForm";
+import DashboardPage from "./pages/dashboard/DashboardPage";
+import AdminDashboard from './pages/dashboard/AdminDashboard';
+import OrganizerDashboard from './pages/dashboard/OrganizerDashboard';
+import VenuePage from './pages/Venue/VenuePage';
+import EventPage from './pages/Event/EventPage';
+import EventManagementPage from './pages/Event/EventManagementPage';
+import ProfilePage from './pages/ProfilePage';
+import PlaceholderPage from './pages/PlaceholderPage';
+import AdminForm from './pages/register/AdminForm';
+import OrderPage from './pages/order/OrderPage';
+import AssetOrdersPage from './pages/order/AssetOrdersPage';
+import ArtistPage from './pages/Artist/ArtistPage';
+import TicketCategoryPage from './pages/TicketCategory/TicketCategoryPage';
+import CheckoutPage from './pages/order/CheckoutPage';
+import PromotionPage from './pages/promotion/PromotionPage';
+import MyTicketsPage from './pages/TicketCategory/MyTicketPage';
+import SeatManagementPage from './pages/seat/SeatManagementPage';
+import TicketAssetPage from './pages/TicketCategory/TicketAssetPage';
+import TicketManagementPage from './pages/TicketCategory/TicketManagementPage';
 
 function App() {
-  const [count, setCount] = useState(0)
-
   return (
-    <>
-      <section id="center">
-        <div className="hero">
-          <img src={heroImg} className="base" width="170" height="179" alt="" />
-          <img src={reactLogo} className="framework" alt="React logo" />
-          <img src={viteLogo} className="vite" alt="Vite logo" />
-        </div>
-        <div>
-          <h1>Get started</h1>
-          <p>
-            Edit <code>src/App.jsx</code> and save to test <code>HMR</code>
-          </p>
-        </div>
-        <button
-          className="counter"
-          onClick={() => setCount((count) => count + 1)}
-        >
-          Count is {count}
-        </button>
-      </section>
+    <BrowserRouter>
+      <Routes>
+        <Route path="/" element={<LandingPage />} />
+        <Route path="/login" element={<LoginPage />} />
+        <Route path="/register" element={<RegisterPage />} />
+        <Route path="/register/customer" element={<CustomerForm />} />
+        <Route path="/register/organizer" element={<OrganizerForm />} />
+        <Route path="/register/admin" element={<AdminForm/>} />
 
-      <div className="ticks"></div>
+        <Route path='/dashboard' element={<DashboardPage />} />
+        <Route path='/dashboard/admin' element={<AdminDashboard />} />
+        <Route path='/dashboard/organizer' element={<OrganizerDashboard />} />
 
-      <section id="next-steps">
-        <div id="docs">
-          <svg className="icon" role="presentation" aria-hidden="true">
-            <use href="/icons.svg#documentation-icon"></use>
-          </svg>
-          <h2>Documentation</h2>
-          <p>Your questions, answered</p>
-          <ul>
-            <li>
-              <a href="https://vite.dev/" target="_blank">
-                <img className="logo" src={viteLogo} alt="" />
-                Explore Vite
-              </a>
-            </li>
-            <li>
-              <a href="https://react.dev/" target="_blank">
-                <img className="button-icon" src={reactLogo} alt="" />
-                Learn more
-              </a>
-            </li>
-          </ul>
-        </div>
-        <div id="social">
-          <svg className="icon" role="presentation" aria-hidden="true">
-            <use href="/icons.svg#social-icon"></use>
-          </svg>
-          <h2>Connect with us</h2>
-          <p>Join the Vite community</p>
-          <ul>
-            <li>
-              <a href="https://github.com/vitejs/vite" target="_blank">
-                <svg
-                  className="button-icon"
-                  role="presentation"
-                  aria-hidden="true"
-                >
-                  <use href="/icons.svg#github-icon"></use>
-                </svg>
-                GitHub
-              </a>
-            </li>
-            <li>
-              <a href="https://chat.vite.dev/" target="_blank">
-                <svg
-                  className="button-icon"
-                  role="presentation"
-                  aria-hidden="true"
-                >
-                  <use href="/icons.svg#discord-icon"></use>
-                </svg>
-                Discord
-              </a>
-            </li>
-            <li>
-              <a href="https://x.com/vite_js" target="_blank">
-                <svg
-                  className="button-icon"
-                  role="presentation"
-                  aria-hidden="true"
-                >
-                  <use href="/icons.svg#x-icon"></use>
-                </svg>
-                X.com
-              </a>
-            </li>
-            <li>
-              <a href="https://bsky.app/profile/vite.dev" target="_blank">
-                <svg
-                  className="button-icon"
-                  role="presentation"
-                  aria-hidden="true"
-                >
-                  <use href="/icons.svg#bluesky-icon"></use>
-                </svg>
-                Bluesky
-              </a>
-            </li>
-          </ul>
-        </div>
-      </section>
+        <Route path='/venue' element={<VenuePage />} />
+        <Route path='/manage-event' element={<EventManagementPage />} />
+        <Route path='/event' element={<EventPage />} />
+        <Route path='/profile' element={<ProfilePage />} />
+        <Route path='/manage-seats' element={<SeatManagementPage />} />
+        <Route path='/ticket-categories' element={<TicketCategoryPage />} />
+        <Route path='/manage-tickets' element={<TicketManagementPage />} />
+        <Route path='/orders' element={<OrderPage />} />
+        <Route path='/checkout/:eventId' element={<CheckoutPage />} />
+        <Route path='/asset-tickets' element={<TicketAssetPage />} />
+        <Route path='/asset-orders' element={<AssetOrdersPage />} />
+        <Route path='/my-tickets' element={<MyTicketsPage />} />
+        <Route path='/promotion' element={<PromotionPage />} />
+        <Route path='/artist' element={<ArtistPage />} />
+        <Route path='/explore' element={<EventPage />} />
 
-      <div className="ticks"></div>
-      <section id="spacer"></section>
-    </>
-  )
+      </Routes>
+    </BrowserRouter>
+  );
 }
 
-export default App
+export default App;

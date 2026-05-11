@@ -7,21 +7,42 @@
     "dev": "vite",
     "build": "vite build",
     "lint": "eslint .",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "start": "node index.js",
+    "server": "node --watch index.js"
   },
   "dependencies": {
+    "dotenv": "^17.4.2",
+    "bcrypt": "^5.1.0",
+    "jsonwebtoken": "^9.0.0",
+    "express": "^5.2.1",
+    "lucide-react": "^1.8.0",
+    "pg": "^8.20.0",
+    "prettier": "^3.8.3",
     "react": "^19.2.4",
-    "react-dom": "^19.2.4"
+    "react-dom": "^19.2.4",
+    "react-router-dom": "^7.14.1"
   },
   "devDependencies": {
     "@eslint/js": "^9.39.4",
-    "@types/react": "^19.2.14",
-    "@types/react-dom": "^19.2.3",
     "@vitejs/plugin-react": "^6.0.1",
     "eslint": "^9.39.4",
     "eslint-plugin-react-hooks": "^7.0.1",
     "eslint-plugin-react-refresh": "^0.5.2",
     "globals": "^17.4.0",
     "vite": "^8.0.4"
-  }
+  },
+  "description": "Aplikasi frontend TikTakTuk berbasis React + Vite untuk simulasi manajemen event, venue, dashboard per role, autentikasi, profile, dan validasi form berbasis constraint SQL.",
+  "main": "eslint.config.js",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/prasetyasurya-ui/TikTakTuk.git"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "bugs": {
+    "url": "https://github.com/prasetyasurya-ui/TikTakTuk/issues"
+  },
+  "homepage": "https://github.com/prasetyasurya-ui/TikTakTuk#readme"
 }
