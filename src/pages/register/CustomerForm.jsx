@@ -152,7 +152,7 @@ const CustomerForm = () => {
               placeholder="Masukkan nomor telepon"
               className="w-full px-4 py-2 rounded-lg border border-slate-300 outline-none"
               maxLength={20}
-              pattern="^[+0-9\s-]{10,20}$"
+              pattern="^\\+?[0-9\\s\\-]{10,20}$"
               required
               value={formData.phone_number}
               onChange={handleChange}
