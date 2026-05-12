@@ -108,7 +108,7 @@ const CustomerForm = () => {
     localStorage.setItem('username', result.user?.username || normalized.username);
     
     alert("Registrasi Berhasil!");
-    navigate('/dashboard');
+    navigate('/login');
   };
 
   return (

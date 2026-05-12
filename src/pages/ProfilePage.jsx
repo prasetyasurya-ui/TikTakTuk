@@ -8,11 +8,11 @@ import {
   ProfilePasswordField,
 } from '../components/profile/ProfileFields';
 import {
-  getCurrentSession,
   fetchProfile,
   updateProfile,
   changePassword,
 } from '../services/api';
+import { useAuth } from '../contexts/AuthContext';
 import {
   normalizeText,
   normalizePhone,
@@ -23,7 +23,7 @@ import {
 } from '../utils/formValidation';
 
 const ProfilePage = () => {
-  const session = getCurrentSession();
+  const { session } = useAuth();
 
   const [loading, setLoading] = useState(true);
   const [profile, setProfile] = useState(null);
@@ -49,19 +49,29 @@ const ProfilePage = () => {
   useEffect(() => {
     const loadProfile = async () => {
       setLoading(true);
-      const response = await fetchProfile(session.userId);
-      if (response.ok) {
-        setProfile(response.data);
-        setProfileForm({
-          full_name: response.data.full_name || '',
-          phone_number: response.data.phone_number || '',
-          organizer_name: response.data.organizer_name || '',
-          contact_email: response.data.contact_email || '',
-        });
-      } else {
-        setProfileMessage(response.message || 'Gagal memuat profile.');
+      setProfileMessage('');
+      try {
+        const res = await fetchProfile(session.userId);
+        // support both mock response ({ ok, data }) and http response ({ status, data })
+        const ok = typeof res.ok === 'boolean' ? res.ok : (res.status >= 200 && res.status < 300);
+        const data = res.data ?? res;
+        if (ok && data) {
+          const payload = data.data ?? data; // if wrapped under data
+          setProfile(payload);
+          setProfileForm({
+            full_name: payload.full_name || '',
+            phone_number: payload.phone_number || '',
+            organizer_name: payload.organizer_name || '',
+            contact_email: payload.contact_email || '',
+          });
+        } else {
+          setProfileMessage((data && data.message) || 'Gagal memuat profile.');
+        }
+      } catch (err) {
+        setProfileMessage('Gagal memuat profile.');
+      } finally {
+        setLoading(false);
       }
-      setLoading(false);
     };
 
     loadProfile();
@@ -117,14 +127,22 @@ const ProfilePage = () => {
       return;
     }
 
-    const response = await updateProfile(session.userId, payload);
+    try {
+      const res = await updateProfile(session.userId, payload);
+      const ok = typeof res.ok === 'boolean' ? res.ok : (res.status >= 200 && res.status < 300);
+      const data = res.data ?? res;
+      if (!ok) {
+        setProfileMessage((data && data.message) || 'Gagal menyimpan profile.');
+        return;
+      }
 
-    if (!response.ok) {
-      setProfileMessage(response.message || 'Gagal menyimpan profile.');
-      return;
+      const payloadResp = data.data ?? data;
+      setProfile(payloadResp);
+      setIsEditing(false);
+      setProfileMessage('Profile berhasil diperbarui.');
+    } catch (err) {
+      setProfileMessage('Gagal menyimpan profile.');
     }
-
-    setProfile(response.data);
     setIsEditing(false);
     setProfileMessage('Profile berhasil diperbarui.');
   };
@@ -166,14 +184,20 @@ const ProfilePage = () => {
       return;
     }
 
-    const response = await changePassword(session.userId, passwordForm);
-    if (!response.ok) {
-      setPasswordMessage(response.message || 'Gagal mengubah password.');
-      return;
-    }
+    try {
+      const res = await changePassword(session.userId, passwordForm);
+      const ok = typeof res.ok === 'boolean' ? res.ok : (res.status >= 200 && res.status < 300);
+      const data = res.data ?? res;
+      if (!ok) {
+        setPasswordMessage((data && data.message) || 'Gagal mengubah password.');
+        return;
+      }
 
-    setPasswordMessage(response.message || 'Password berhasil diubah.');
-    setPasswordForm({ oldPassword: '', newPassword: '', confirmPassword: '' });
+      setPasswordMessage((data && data.message) || 'Password berhasil diubah.');
+      setPasswordForm({ oldPassword: '', newPassword: '', confirmPassword: '' });
+    } catch (err) {
+      setPasswordMessage('Gagal mengubah password.');
+    }
   };
 
   if (loading) {

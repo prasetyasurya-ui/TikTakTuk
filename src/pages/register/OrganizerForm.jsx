@@ -122,7 +122,7 @@ const OrganizerForm = () => {
     localStorage.setItem('username', result.user?.username || normalized.username);
     
     alert("Registrasi Organizer Berhasil!");
-    navigate('/dashboard');
+    navigate('/login');
   };
 
   return (

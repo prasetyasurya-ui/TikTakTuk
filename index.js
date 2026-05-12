@@ -18,6 +18,66 @@ app.use(express.json());
 const PORT = process.env.PORT || 3000;
 const JWT_SECRET = process.env.JWT_SECRET || 'change-me';
 
+// helper: check if a column exists in a table (schema, table, column)
+async function columnExists(schema, table, column) {
+  try {
+    const r = await query(
+      `SELECT 1 FROM information_schema.columns WHERE table_schema = $1 AND table_name = $2 AND column_name = $3 LIMIT 1`,
+      [schema.toLowerCase(), table.toLowerCase(), column.toLowerCase()]
+    );
+    return r.rowCount > 0;
+  } catch (_err) {
+    return false;
+  }
+}
+
+async function getUserRoles(userId) {
+  const rolesRes = await query(
+    'SELECT r.role_name FROM TIKTAKTUK.ROLE r JOIN TIKTAKTUK.ACCOUNT_ROLE ar ON ar.role_id = r.role_id WHERE ar.user_id = $1',
+    [userId]
+  );
+  return rolesRes.rows.map((row) => row.role_name.toLowerCase());
+}
+
+async function getUserByUsername(username) {
+  const result = await query('SELECT user_id, username, password FROM TIKTAKTUK.USER_ACCOUNT WHERE LOWER(username)=LOWER($1)', [username]);
+  return result.rowCount > 0 ? result.rows[0] : null;
+}
+
+async function getUserById(userId) {
+  const result = await query('SELECT user_id, username FROM TIKTAKTUK.USER_ACCOUNT WHERE user_id = $1', [userId]);
+  return result.rowCount > 0 ? result.rows[0] : null;
+}
+
+async function persistCustomerProfile(userId, body) {
+  const { full_name, phone_number } = body;
+  await query(
+    'INSERT INTO TIKTAKTUK.CUSTOMER (user_id, full_name, phone_number) VALUES ($1,$2,$3) ON CONFLICT (user_id) DO UPDATE SET full_name = EXCLUDED.full_name, phone_number = EXCLUDED.phone_number',
+    [userId, full_name || '', phone_number || '']
+  );
+}
+
+async function persistOrganizerProfile(userId, body) {
+  const { organizer_name, contact_email } = body;
+  const hasContactEmail = await columnExists('TIKTAKTUK', 'ORGANIZER', 'contact_email');
+  if (hasContactEmail) {
+    await query(
+      'INSERT INTO TIKTAKTUK.ORGANIZER (user_id, organizer_name, contact_email) VALUES ($1,$2,$3) ON CONFLICT (user_id) DO UPDATE SET organizer_name = EXCLUDED.organizer_name, contact_email = EXCLUDED.contact_email',
+      [userId, organizer_name || '', contact_email || '']
+    );
+    return;
+  }
+
+  await query(
+    'INSERT INTO TIKTAKTUK.ORGANIZER (user_id, organizer_name) VALUES ($1,$2) ON CONFLICT (user_id) DO UPDATE SET organizer_name = EXCLUDED.organizer_name',
+    [userId, organizer_name || '']
+  );
+}
+
+function ensureRole(roles, expectedRole) {
+  return roles.includes(expectedRole);
+}
+
 app.get('/api/health', async (req, res) => {
   try {
     const result = await query('SELECT NOW()');
@@ -72,10 +132,18 @@ async function registerAccount(req, res, roleOverride) {
     if (role.toLowerCase() === 'organizer') {
       const { organizer_name, contact_email } = req.body;
       if (organizer_name) {
-        await query(
-          'INSERT INTO TIKTAKTUK.ORGANIZER (organizer_name, contact_email, user_id) VALUES ($1, $2, $3) ON CONFLICT (user_id) DO UPDATE SET organizer_name = EXCLUDED.organizer_name, contact_email = EXCLUDED.contact_email',
-          [organizer_name, contact_email || '', user.user_id]
-        );
+        const hasContactEmail = await columnExists('TIKTAKTUK', 'ORGANIZER', 'contact_email');
+        if (hasContactEmail) {
+          await query(
+            'INSERT INTO TIKTAKTUK.ORGANIZER (organizer_name, contact_email, user_id) VALUES ($1, $2, $3) ON CONFLICT (user_id) DO UPDATE SET organizer_name = EXCLUDED.organizer_name, contact_email = EXCLUDED.contact_email',
+            [organizer_name, contact_email || '', user.user_id]
+          );
+        } else {
+          await query(
+            'INSERT INTO TIKTAKTUK.ORGANIZER (organizer_name, user_id) VALUES ($1, $2) ON CONFLICT (user_id) DO UPDATE SET organizer_name = EXCLUDED.organizer_name',
+            [organizer_name, user.user_id]
+          );
+        }
       }
     }
 
@@ -88,6 +156,7 @@ async function registerAccount(req, res, roleOverride) {
 app.post('/api/auth/register', async (req, res) => registerAccount(req, res));
 app.post('/api/auth/register/customer', async (req, res) => registerAccount(req, res, 'customer'));
 app.post('/api/auth/register/organizer', async (req, res) => registerAccount(req, res, 'organizer'));
+app.post('/api/auth/register/admin', async (req, res) => registerAccount(req, res, 'admin'));
 
 app.get('/api/dashboard/customer', async (req, res) => {
   const { userId } = req.query;
@@ -202,6 +271,33 @@ app.post('/api/auth/login', async (req, res) => {
   }
 });
 
+async function loginForRole(req, res, expectedRole) {
+  const { username, password } = req.body;
+  if (!username || !password) return res.status(400).json({ error: 'Missing fields' });
+
+  try {
+    const user = await getUserByUsername(username);
+    if (!user) return res.status(400).json({ error: 'Invalid credentials' });
+
+    const ok = await bcrypt.compare(password, user.password);
+    if (!ok) return res.status(400).json({ error: 'Invalid credentials' });
+
+    const roles = await getUserRoles(user.user_id);
+    if (!ensureRole(roles, expectedRole)) {
+      return res.status(403).json({ error: `Account is not a ${expectedRole}` });
+    }
+
+    const token = jwt.sign({ user_id: user.user_id, username: user.username, roles }, JWT_SECRET, { expiresIn: '8h' });
+    res.json({ token, user: { user_id: user.user_id, username: user.username, roles } });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+}
+
+app.post('/api/auth/login/customer', async (req, res) => loginForRole(req, res, 'customer'));
+app.post('/api/auth/login/organizer', async (req, res) => loginForRole(req, res, 'organizer'));
+app.post('/api/auth/login/admin', async (req, res) => loginForRole(req, res, 'admin'));
+
 // Get user by id
 app.get('/api/users/:id', async (req, res) => {
   try {
@@ -209,6 +305,290 @@ app.get('/api/users/:id', async (req, res) => {
     if (u.rowCount === 0) return res.status(404).json({ error: 'User not found' });
     const rolesRes = await query('SELECT r.role_name FROM TIKTAKTUK.ROLE r JOIN TIKTAKTUK.ACCOUNT_ROLE ar ON ar.role_id = r.role_id WHERE ar.user_id = $1', [req.params.id]);
     res.json({ user: u.rows[0], roles: rolesRes.rows.map(r => r.role_name) });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Profile endpoints (combine user + customer/organizer data)
+app.get('/api/profile', async (req, res) => {
+  const { userId } = req.query;
+  if (!userId) return res.status(400).json({ error: 'Missing userId' });
+
+  try {
+    const u = await query('SELECT user_id, username, password FROM TIKTAKTUK.USER_ACCOUNT WHERE user_id = $1', [userId]);
+    if (u.rowCount === 0) return res.status(404).json({ error: 'User not found' });
+
+    const rolesRes = await query('SELECT r.role_name FROM TIKTAKTUK.ROLE r JOIN TIKTAKTUK.ACCOUNT_ROLE ar ON ar.role_id = r.role_id WHERE ar.user_id = $1', [userId]);
+    const roles = rolesRes.rows.map(r => r.role_name);
+
+    // determine role and only fetch relevant rows to avoid touching organizer columns for customers
+    const normalizedRoles = roles.map(r => r.toLowerCase());
+    const isCustomer = normalizedRoles.includes('customer');
+    const isOrganizer = normalizedRoles.includes('organizer');
+
+    let profile = {
+      user_id: u.rows[0].user_id,
+      username: u.rows[0].username,
+      roles,
+      role: normalizedRoles[0] || 'customer',
+    };
+
+    if (isCustomer) {
+      const cust = await query('SELECT customer_id, full_name, phone_number FROM TIKTAKTUK.CUSTOMER WHERE user_id = $1', [userId]);
+      profile = {
+        ...profile,
+        full_name: cust.rowCount > 0 ? cust.rows[0].full_name : null,
+        phone_number: cust.rowCount > 0 ? cust.rows[0].phone_number : null,
+      };
+    }
+
+    if (isOrganizer) {
+      const hasContactEmail = await columnExists('TIKTAKTUK', 'ORGANIZER', 'contact_email');
+      const org = hasContactEmail
+        ? await query('SELECT organizer_id, organizer_name, contact_email FROM TIKTAKTUK.ORGANIZER WHERE user_id = $1', [userId])
+        : await query('SELECT organizer_id, organizer_name FROM TIKTAKTUK.ORGANIZER WHERE user_id = $1', [userId]);
+      profile = {
+        ...profile,
+        organizer_name: org.rowCount > 0 ? org.rows[0].organizer_name : null,
+        contact_email: org.rowCount > 0 && hasContactEmail ? org.rows[0].contact_email : null,
+      };
+    }
+
+    res.json({ data: profile });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.post('/api/profile/update', async (req, res) => {
+  const { userId } = req.query;
+  if (!userId) return res.status(400).json({ error: 'Missing userId' });
+
+  try {
+    // check roles and only update relevant tables
+    const rolesRes = await query('SELECT r.role_name FROM TIKTAKTUK.ROLE r JOIN TIKTAKTUK.ACCOUNT_ROLE ar ON ar.role_id = r.role_id WHERE ar.user_id = $1', [userId]);
+    const normalized = rolesRes.rows.map(r => r.role_name.toLowerCase());
+    const updatingCustomer = normalized.includes('customer');
+    const updatingOrganizer = normalized.includes('organizer');
+
+    if (updatingCustomer) {
+      const { full_name, phone_number } = req.body;
+      await query(
+        'INSERT INTO TIKTAKTUK.CUSTOMER (user_id, full_name, phone_number) VALUES ($1,$2,$3) ON CONFLICT (user_id) DO UPDATE SET full_name = EXCLUDED.full_name, phone_number = EXCLUDED.phone_number',
+        [userId, full_name || '', phone_number || '']
+      );
+    }
+
+    if (updatingOrganizer) {
+      const { organizer_name, contact_email } = req.body;
+      const hasContactEmail2 = await columnExists('TIKTAKTUK', 'ORGANIZER', 'contact_email');
+      if (hasContactEmail2) {
+        await query(
+          'INSERT INTO TIKTAKTUK.ORGANIZER (user_id, organizer_name, contact_email) VALUES ($1,$2,$3) ON CONFLICT (user_id) DO UPDATE SET organizer_name = EXCLUDED.organizer_name, contact_email = EXCLUDED.contact_email',
+          [userId, organizer_name || '', contact_email || '']
+        );
+      } else {
+        await query(
+          'INSERT INTO TIKTAKTUK.ORGANIZER (user_id, organizer_name) VALUES ($1,$2) ON CONFLICT (user_id) DO UPDATE SET organizer_name = EXCLUDED.organizer_name',
+          [userId, organizer_name || '']
+        );
+      }
+    }
+
+    // return updated profile
+    const updated = await query('SELECT u.user_id, u.username FROM TIKTAKTUK.USER_ACCOUNT u WHERE u.user_id = $1', [userId]);
+    const profile = { user_id: updated.rows[0].user_id, username: updated.rows[0].username };
+
+    if (updatingCustomer) {
+      const cust = await query('SELECT full_name, phone_number FROM TIKTAKTUK.CUSTOMER WHERE user_id = $1', [userId]);
+      profile.full_name = cust.rowCount > 0 ? cust.rows[0].full_name : null;
+      profile.phone_number = cust.rowCount > 0 ? cust.rows[0].phone_number : null;
+    }
+
+    if (updatingOrganizer) {
+      const hasContactEmail3 = await columnExists('TIKTAKTUK', 'ORGANIZER', 'contact_email');
+      const org = hasContactEmail3
+        ? await query('SELECT organizer_name, contact_email FROM TIKTAKTUK.ORGANIZER WHERE user_id = $1', [userId])
+        : await query('SELECT organizer_name FROM TIKTAKTUK.ORGANIZER WHERE user_id = $1', [userId]);
+      profile.organizer_name = org.rowCount > 0 ? org.rows[0].organizer_name : null;
+      profile.contact_email = org.rowCount > 0 && hasContactEmail3 ? org.rows[0].contact_email : null;
+    }
+
+    res.json({ data: profile });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.post('/api/profile/change-password', async (req, res) => {
+  const { userId } = req.query;
+  const { oldPassword, newPassword } = req.body;
+  if (!userId) return res.status(400).json({ error: 'Missing userId' });
+  if (!oldPassword || !newPassword) return res.status(400).json({ error: 'Missing password fields' });
+
+  try {
+    const u = await query('SELECT user_id, password FROM TIKTAKTUK.USER_ACCOUNT WHERE user_id = $1', [userId]);
+    if (u.rowCount === 0) return res.status(404).json({ error: 'User not found' });
+
+    const ok = await bcrypt.compare(oldPassword, u.rows[0].password);
+    if (!ok) return res.status(400).json({ error: 'Old password is incorrect' });
+
+    const hashed = await bcrypt.hash(newPassword, 10);
+    await query('UPDATE TIKTAKTUK.USER_ACCOUNT SET password = $1 WHERE user_id = $2', [hashed, userId]);
+    res.json({ message: 'Password berhasil diubah' });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.get('/api/profile/customer', async (req, res) => {
+  const { userId } = req.query;
+  if (!userId) return res.status(400).json({ error: 'Missing userId' });
+
+  try {
+    const roles = await getUserRoles(userId);
+    if (!ensureRole(roles, 'customer')) return res.status(403).json({ error: 'Account is not a customer' });
+
+    const user = await getUserById(userId);
+    if (!user) return res.status(404).json({ error: 'User not found' });
+
+    const cust = await query('SELECT customer_id, full_name, phone_number FROM TIKTAKTUK.CUSTOMER WHERE user_id = $1', [userId]);
+    return res.json({
+      data: {
+        user_id: user.user_id,
+        username: user.username,
+        role: 'customer',
+        full_name: cust.rowCount > 0 ? cust.rows[0].full_name : null,
+        phone_number: cust.rowCount > 0 ? cust.rows[0].phone_number : null,
+      },
+    });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.get('/api/profile/organizer', async (req, res) => {
+  const { userId } = req.query;
+  if (!userId) return res.status(400).json({ error: 'Missing userId' });
+
+  try {
+    const roles = await getUserRoles(userId);
+    if (!ensureRole(roles, 'organizer')) return res.status(403).json({ error: 'Account is not an organizer' });
+
+    const user = await getUserById(userId);
+    if (!user) return res.status(404).json({ error: 'User not found' });
+
+    const hasContactEmail = await columnExists('TIKTAKTUK', 'ORGANIZER', 'contact_email');
+    const org = hasContactEmail
+      ? await query('SELECT organizer_id, organizer_name, contact_email FROM TIKTAKTUK.ORGANIZER WHERE user_id = $1', [userId])
+      : await query('SELECT organizer_id, organizer_name FROM TIKTAKTUK.ORGANIZER WHERE user_id = $1', [userId]);
+
+    return res.json({
+      data: {
+        user_id: user.user_id,
+        username: user.username,
+        role: 'organizer',
+        organizer_name: org.rowCount > 0 ? org.rows[0].organizer_name : null,
+        contact_email: org.rowCount > 0 && hasContactEmail ? org.rows[0].contact_email : null,
+      },
+    });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.get('/api/profile/admin', async (req, res) => {
+  const { userId } = req.query;
+  if (!userId) return res.status(400).json({ error: 'Missing userId' });
+
+  try {
+    const roles = await getUserRoles(userId);
+    if (!ensureRole(roles, 'admin')) return res.status(403).json({ error: 'Account is not an admin' });
+
+    const user = await getUserById(userId);
+    if (!user) return res.status(404).json({ error: 'User not found' });
+
+    return res.json({
+      data: {
+        user_id: user.user_id,
+        username: user.username,
+        role: 'admin',
+        roles,
+      },
+    });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.post('/api/profile/customer/update', async (req, res) => {
+  const { userId } = req.query;
+  if (!userId) return res.status(400).json({ error: 'Missing userId' });
+
+  try {
+    const roles = await getUserRoles(userId);
+    if (!ensureRole(roles, 'customer')) return res.status(403).json({ error: 'Account is not a customer' });
+    await persistCustomerProfile(userId, req.body);
+    const user = await getUserById(userId);
+    const cust = await query('SELECT full_name, phone_number FROM TIKTAKTUK.CUSTOMER WHERE user_id = $1', [userId]);
+    res.json({
+      data: {
+        user_id: user.user_id,
+        username: user.username,
+        role: 'customer',
+        full_name: cust.rowCount > 0 ? cust.rows[0].full_name : null,
+        phone_number: cust.rowCount > 0 ? cust.rows[0].phone_number : null,
+      },
+    });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.post('/api/profile/organizer/update', async (req, res) => {
+  const { userId } = req.query;
+  if (!userId) return res.status(400).json({ error: 'Missing userId' });
+
+  try {
+    const roles = await getUserRoles(userId);
+    if (!ensureRole(roles, 'organizer')) return res.status(403).json({ error: 'Account is not an organizer' });
+    await persistOrganizerProfile(userId, req.body);
+    const user = await getUserById(userId);
+    const hasContactEmail = await columnExists('TIKTAKTUK', 'ORGANIZER', 'contact_email');
+    const org = hasContactEmail
+      ? await query('SELECT organizer_name, contact_email FROM TIKTAKTUK.ORGANIZER WHERE user_id = $1', [userId])
+      : await query('SELECT organizer_name FROM TIKTAKTUK.ORGANIZER WHERE user_id = $1', [userId]);
+    res.json({
+      data: {
+        user_id: user.user_id,
+        username: user.username,
+        role: 'organizer',
+        organizer_name: org.rowCount > 0 ? org.rows[0].organizer_name : null,
+        contact_email: org.rowCount > 0 && hasContactEmail ? org.rows[0].contact_email : null,
+      },
+    });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.post('/api/profile/admin/change-password', async (req, res) => {
+  const { userId } = req.query;
+  const { oldPassword, newPassword } = req.body;
+  if (!userId) return res.status(400).json({ error: 'Missing userId' });
+  if (!oldPassword || !newPassword) return res.status(400).json({ error: 'Missing password fields' });
+
+  try {
+    const roles = await getUserRoles(userId);
+    if (!ensureRole(roles, 'admin')) return res.status(403).json({ error: 'Account is not an admin' });
+    const u = await query('SELECT user_id, password FROM TIKTAKTUK.USER_ACCOUNT WHERE user_id = $1', [userId]);
+    if (u.rowCount === 0) return res.status(404).json({ error: 'User not found' });
+    const ok = await bcrypt.compare(oldPassword, u.rows[0].password);
+    if (!ok) return res.status(400).json({ error: 'Old password is incorrect' });
+    const hashed = await bcrypt.hash(newPassword, 10);
+    await query('UPDATE TIKTAKTUK.USER_ACCOUNT SET password = $1 WHERE user_id = $2', [hashed, userId]);
+    res.json({ message: 'Password berhasil diubah' });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }

@@ -27,16 +27,29 @@ const CustomerDashboard = () => {
     },
     upcoming_tickets: [],
   });
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState('');
 
   useEffect(() => {
     const loadCustomerDashboard = async () => {
+      setError('');
+      setLoading(true);
       if (!session?.userId) {
         setCustomer(FALLBACK_CUSTOMER);
+        setLoading(false);
         return;
       }
 
-      const data = await fetchCustomerDashboard(session.userId);
-      setCustomer(data || FALLBACK_CUSTOMER);
+      try {
+        const data = await fetchCustomerDashboard(session.userId);
+        setCustomer(data || FALLBACK_CUSTOMER);
+      } catch (err) {
+        // keep fallback and show a small error message
+        setCustomer(FALLBACK_CUSTOMER);
+        setError('Gagal memuat data dashboard. Coba lagi.');
+      } finally {
+        setLoading(false);
+      }
     };
 
     loadCustomerDashboard();
@@ -52,6 +65,26 @@ const CustomerDashboard = () => {
           <h1 className="text-3xl font-bold text-slate-900">Halo, {customer.nama}!</h1>
           <p className="text-slate-500 mt-1">Berikut adalah ringkasan aktivitas pertunjukkan Anda.</p>
         </div>
+
+        {loading && (
+          <div className="mb-6">
+            <div className="animate-pulse space-y-3">
+              <div className="h-6 bg-slate-200 rounded w-1/3" />
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mt-4">
+                <div className="h-20 bg-slate-200 rounded" />
+                <div className="h-20 bg-slate-200 rounded" />
+                <div className="h-20 bg-slate-200 rounded" />
+                <div className="h-20 bg-slate-200 rounded" />
+              </div>
+            </div>
+          </div>
+        )}
+
+        {error && (
+          <div className="mb-6">
+            <div className="text-sm text-red-600 font-medium">{error}</div>
+          </div>
+        )}
 
         {/* Section: Ringkasan Statistik */}
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6 mb-12">
