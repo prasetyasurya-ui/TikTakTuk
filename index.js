@@ -285,6 +285,16 @@ app.get('/api/dashboard/admin', async (req, res) => {
     const events = await query('SELECT COUNT(*)::int AS total FROM TIKTAKTUK.EVENT');
     const venues = await query('SELECT COUNT(*)::int AS total FROM TIKTAKTUK.VENUE');
     const promos = await query('SELECT COUNT(*)::int AS total FROM TIKTAKTUK.PROMOTION');
+    
+    // Get reserved seating venues count
+    const reservedSeatingRes = await query(
+      "SELECT COUNT(*)::int AS total FROM TIKTAKTUK.VENUE WHERE jenis_seating = 'RESERVED_SEATING'"
+    );
+    
+    // Get venue with largest capacity
+    const largestVenueRes = await query(
+      'SELECT venue_name FROM TIKTAKTUK.VENUE ORDER BY capacity DESC LIMIT 1'
+    );
 
     res.json({
       data: {
@@ -296,8 +306,8 @@ app.get('/api/dashboard/admin', async (req, res) => {
         },
         infrastruktur_venue: {
           total_venue: venues.rows[0]?.total || 0,
-          reserved_seating: 0,
-          kapasitas_terbesar: '-',
+          reserved_seating: reservedSeatingRes.rows[0]?.total || 0,
+          kapasitas_terbesar: largestVenueRes.rows[0]?.venue_name || '-',
         },
         marketing_promosi: {
           promo_persentase: 0,
