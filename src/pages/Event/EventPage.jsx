@@ -5,23 +5,49 @@ import { fetchEvents } from '../../services/api';
 
 const EventPage = () => {
   const [events, setEvents] = useState([]);
-
+  const [venues, setVenues] = useState({});
+  
   const [searchQuery, setSearchQuery] = useState("");
   const [selectedVenue, setSelectedVenue] = useState("Semua Venue");
 
   useEffect(() => {
     const loadEvents = async () => {
       const data = await fetchEvents();
-      setEvents(data);
+      
+      const gradients = ['from-purple-500 to-pink-500', 'from-blue-500 to-cyan-500', 'from-green-500 to-emerald-500', 'from-orange-500 to-red-500', 'from-indigo-500 to-blue-500', 'from-rose-500 to-pink-500'];
+      
+      const transformed = (data || []).map((event, idx) => {
+        const date = new Date(event.event_datetime);
+        const time = date.toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' });
+        
+        return {
+          id: event.event_id,
+          title: event.event_title || 'Event tanpa judul',
+          date: event.event_datetime,
+          venue: venues[event.venue_id] || `Venue ${event.venue_id?.slice(0, 8)}...` || 'Venue tidak diketahui',
+          artists: [],
+          categories: ['Regular'],
+          gradient: gradients[idx % gradients.length],
+          time: time,
+          startPrice: 150000 + (idx * 50000)
+        };
+      });
+      
+      setEvents(transformed);
     };
 
     loadEvents();
-  }, []);
+  }, [venues]);
 
   const filteredEvents = useMemo(() => {
+    if (!events || events.length === 0) return [];
+    
     return events.filter(event => {
-      const matchesSearch = event.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
-                           event.artists.some(a => a.toLowerCase().includes(searchQuery.toLowerCase()));
+      const titleSafe = event.title || '';
+      const artistsSafe = event.artists || [];
+      
+      const matchesSearch = titleSafe.toLowerCase().includes(searchQuery.toLowerCase()) ||
+                           artistsSafe.some(a => (a || '').toLowerCase().includes(searchQuery.toLowerCase()));
       const matchesVenue = selectedVenue === "Semua Venue" || event.venue === selectedVenue;
       return matchesSearch && matchesVenue;
     });
@@ -55,11 +81,16 @@ const EventPage = () => {
             onChange={(e) => setSelectedVenue(e.target.value)}
           >
             <option>Semua Venue</option>
-            {Array.from(new Set(events.map(e => e.venue))).map(v => <option key={v} value={v}>{v}</option>)}
+            {events && events.length > 0 && Array.from(new Set(events.filter(e => e && e.venue).map(e => e.venue))).map(v => <option key={v} value={v}>{v}</option>)}
           </select>
         </div>
 
         {/* Compact Grid */}
+        {filteredEvents.length === 0 ? (
+          <div className="text-center py-12">
+            <p className="text-slate-500 text-lg">Tidak ada event yang sesuai dengan pencarian Anda</p>
+          </div>
+        ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
           {filteredEvents.map((event) => (
             <div key={event.id} className="group bg-white rounded-2xl border border-slate-100 shadow-sm hover:shadow-md transition-all flex flex-col overflow-hidden">
@@ -122,11 +153,6 @@ const EventPage = () => {
             </div>
           ))}
         </div>
-
-        {filteredEvents.length === 0 && (
-          <div className="text-center py-20 bg-white rounded-3xl border border-dashed border-slate-200">
-            <p className="text-slate-400 font-medium">Event tidak ditemukan.</p>
-          </div>
         )}
       </main>
     </div>

@@ -59,6 +59,26 @@ async function registerAccount(req, res, roleOverride) {
 
     await query('INSERT INTO TIKTAKTUK.ACCOUNT_ROLE (role_id, user_id) VALUES ($1, $2)', [roleId, user.user_id]);
 
+    if (role.toLowerCase() === 'customer') {
+      const { full_name, phone_number } = req.body;
+      if (full_name) {
+        await query(
+          'INSERT INTO TIKTAKTUK.CUSTOMER (full_name, phone_number, user_id) VALUES ($1, $2, $3) ON CONFLICT (user_id) DO UPDATE SET full_name = EXCLUDED.full_name, phone_number = EXCLUDED.phone_number',
+          [full_name, phone_number || '', user.user_id]
+        );
+      }
+    }
+
+    if (role.toLowerCase() === 'organizer') {
+      const { organizer_name, contact_email } = req.body;
+      if (organizer_name) {
+        await query(
+          'INSERT INTO TIKTAKTUK.ORGANIZER (organizer_name, contact_email, user_id) VALUES ($1, $2, $3) ON CONFLICT (user_id) DO UPDATE SET organizer_name = EXCLUDED.organizer_name, contact_email = EXCLUDED.contact_email',
+          [organizer_name, contact_email || '', user.user_id]
+        );
+      }
+    }
+
     res.status(201).json({ message: 'Registrasi berhasil', user: { user_id: user.user_id, username: user.username } });
   } catch (err) {
     res.status(500).json({ error: err.message });
@@ -68,6 +88,96 @@ async function registerAccount(req, res, roleOverride) {
 app.post('/api/auth/register', async (req, res) => registerAccount(req, res));
 app.post('/api/auth/register/customer', async (req, res) => registerAccount(req, res, 'customer'));
 app.post('/api/auth/register/organizer', async (req, res) => registerAccount(req, res, 'organizer'));
+
+app.get('/api/dashboard/customer', async (req, res) => {
+  const { userId } = req.query;
+  if (!userId) return res.status(400).json({ error: 'Missing userId' });
+
+  try {
+    const userResult = await query(
+      'SELECT u.username, c.full_name FROM TIKTAKTUK.USER_ACCOUNT u LEFT JOIN TIKTAKTUK.CUSTOMER c ON c.user_id = u.user_id WHERE u.user_id = $1',
+      [userId]
+    );
+    if (userResult.rowCount === 0) return res.status(404).json({ error: 'User not found' });
+
+    const customer = userResult.rows[0];
+    res.json({
+      data: {
+        nama: customer.full_name || customer.username,
+        stats: {
+          tiket_aktif: 0,
+          acara_diikuti: 0,
+          promo_tersedia: 0,
+          total_belanja_bulan_ini: 'Rp 0',
+        },
+        upcoming_tickets: [],
+      },
+    });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.get('/api/dashboard/organizer', async (req, res) => {
+  const { userId } = req.query;
+  if (!userId) return res.status(400).json({ error: 'Missing userId' });
+
+  try {
+    const userResult = await query(
+      'SELECT u.username, o.organizer_name FROM TIKTAKTUK.USER_ACCOUNT u LEFT JOIN TIKTAKTUK.ORGANIZER o ON o.user_id = u.user_id WHERE u.user_id = $1',
+      [userId]
+    );
+    if (userResult.rowCount === 0) return res.status(404).json({ error: 'User not found' });
+
+    const organizerName = userResult.rows[0].organizer_name || userResult.rows[0].username;
+    res.json({
+      data: {
+        ringkasan: {
+          acara_aktif: 0,
+          tiket_terjual: 0,
+          revenue_bulan_ini: 'Rp 0',
+          venue_mitra: 0,
+        },
+        top_acara: [],
+        organizer_name: organizerName,
+      },
+    });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.get('/api/dashboard/admin', async (req, res) => {
+  try {
+    const users = await query('SELECT COUNT(*)::int AS total FROM TIKTAKTUK.USER_ACCOUNT');
+    const events = await query('SELECT COUNT(*)::int AS total FROM TIKTAKTUK.EVENT');
+    const venues = await query('SELECT COUNT(*)::int AS total FROM TIKTAKTUK.VENUE');
+    const promos = await query('SELECT COUNT(*)::int AS total FROM TIKTAKTUK.PROMOTION');
+
+    res.json({
+      data: {
+        platform: {
+          total_pengguna: String(users.rows[0]?.total || 0),
+          total_acara_bulan_ini: String(events.rows[0]?.total || 0),
+          omzet_platform: 'Rp 0',
+          promosi_aktif: String(promos.rows[0]?.total || 0),
+        },
+        infrastruktur_venue: {
+          total_venue: venues.rows[0]?.total || 0,
+          reserved_seating: 0,
+          kapasitas_terbesar: '-',
+        },
+        marketing_promosi: {
+          promo_persentase: 0,
+          promo_nominal: 0,
+          total_penggunaan: '0 kali',
+        },
+      },
+    });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
 
 // Login
 app.post('/api/auth/login', async (req, res) => {
