@@ -12,10 +12,11 @@ import {
   hasMaxLength,
 } from '../../utils/formValidation';
 
-const  AdminForm = () => {
+const AdminForm = () => {
   const navigate = useNavigate();
   const [confirmPassword, setConfirmPassword] = useState('');
   const [errors, setErrors] = useState({});
+  const [isLoading, setIsLoading] = useState(false); // Tambahan state loading
   
   const [formData, setFormData] = useState({
     full_name: "",
@@ -95,20 +96,28 @@ const  AdminForm = () => {
       return;
     }
 
-    const result = await registerCustomer(normalized);
-    if (!result.ok) {
-      setErrors((prev) => ({ ...prev, username: result.message || 'Registrasi gagal' }));
-      return;
-    }
+    setIsLoading(true); // Set loading ke true saat mulai request
 
-    localStorage.setItem('isLoggedIn', 'true');
-    localStorage.setItem('userId', result.user?.user_id || '');
-    localStorage.setItem('userRole', 'admin');
-    localStorage.setItem('userName', result.user?.username || normalized.username);
-    localStorage.setItem('username', result.user?.username || normalized.username);
-    
-    alert("Registrasi Berhasil!");
-    navigate('/login');
+    try {
+      const result = await registerCustomer(normalized);
+      if (!result.ok) {
+        setErrors((prev) => ({ ...prev, username: result.message || 'Registrasi gagal' }));
+        setIsLoading(false); // Set loading ke false jika gagal
+        return;
+      }
+
+      localStorage.setItem('isLoggedIn', 'true');
+      localStorage.setItem('userId', result.user?.user_id || '');
+      localStorage.setItem('userRole', 'admin');
+      localStorage.setItem('userName', result.user?.username || normalized.username);
+      localStorage.setItem('username', result.user?.username || normalized.username);
+      
+      alert("Registrasi Berhasil!");
+      navigate('/login');
+    } catch (err) {
+      setErrors((prev) => ({ ...prev, username: 'Terjadi kesalahan jaringan atau server.' }));
+      setIsLoading(false); // Set loading ke false jika error jaringan
+    }
   };
 
   return (
@@ -126,11 +135,12 @@ const  AdminForm = () => {
               name="full_name"
               type="text"
               placeholder="Masukkan nama lengkap"
-              className="w-full px-4 py-2 rounded-lg border border-slate-300 focus:ring-2 focus:ring-blue-500 outline-none transition-all"
+              className="w-full px-4 py-2 rounded-lg border border-slate-300 focus:ring-2 focus:ring-blue-500 outline-none transition-all disabled:bg-slate-50 disabled:text-slate-500"
               required
               value={formData.full_name}
               onChange={handleChange}
               maxLength={100}
+              disabled={isLoading}
             />
             {errors.full_name && <p className="text-red-500 text-xs">{errors.full_name}</p>}
           </div>
@@ -141,11 +151,12 @@ const  AdminForm = () => {
               name="email"
               type="email"
               placeholder="user@mail.com"
-              className={`w-full px-4 py-2 rounded-lg border ${errors.email ? 'border-red-500' : 'border-slate-300'} outline-none`}
+              className={`w-full px-4 py-2 rounded-lg border ${errors.email ? 'border-red-500' : 'border-slate-300'} outline-none disabled:bg-slate-50 disabled:text-slate-500`}
               required
               value={formData.email}
               maxLength={SQL_MAX_LENGTH.CONTACT_EMAIL}
               onChange={handleChange}
+              disabled={isLoading}
             />
             {errors.email && <p className="text-red-500 text-xs">{errors.email}</p>}
           </div>
@@ -156,16 +167,16 @@ const  AdminForm = () => {
               name="phone_number"
               type="text"
               placeholder="Masukkan nomor telepon"
-              className="w-full px-4 py-2 rounded-lg border border-slate-300 outline-none"
+              className="w-full px-4 py-2 rounded-lg border border-slate-300 outline-none disabled:bg-slate-50 disabled:text-slate-500"
               maxLength={20}
               inputMode="tel"
               required
               value={formData.phone_number}
               onChange={handleChange}
+              disabled={isLoading}
             />
             {errors.phone_number && <p className="text-red-500 text-xs">{errors.phone_number}</p>}
           </div>
-
 
           <div>
             <label className="block text-sm font-medium text-slate-700 mb-1">Username</label>
@@ -173,13 +184,14 @@ const  AdminForm = () => {
               name="username"
               type="text"
               placeholder="Pilih username"
-              className={`w-full px-4 py-2 rounded-lg border ${errors.username ? 'border-red-500' : 'border-slate-300'} outline-none`}
+              className={`w-full px-4 py-2 rounded-lg border ${errors.username ? 'border-red-500' : 'border-slate-300'} outline-none disabled:bg-slate-50 disabled:text-slate-500`}
               required
               maxLength={100}
               minLength={4}
               pattern="[A-Za-z0-9_]+"
               value={formData.username}
               onChange={handleChange}
+              disabled={isLoading}
             />
             {errors.username && <p className="text-red-500 text-xs">{errors.username}</p>}
           </div>
@@ -189,13 +201,14 @@ const  AdminForm = () => {
             <input
               name="password"
               type="password"
-              className="w-full px-4 py-2 rounded-lg border border-slate-300 outline-none"
+              className="w-full px-4 py-2 rounded-lg border border-slate-300 outline-none disabled:bg-slate-50 disabled:text-slate-500"
               required
               placeholder='Minimal 6 karakter'
               minLength={6}
               maxLength={255}
               value={formData.password}
               onChange={handleChange}
+              disabled={isLoading}
             />
             {errors.password && <p className="text-red-500 text-xs">{errors.password}</p>}
           </div>
@@ -205,27 +218,43 @@ const  AdminForm = () => {
             <input
               name="confirmPassword"
               type="password"
-              className={`w-full px-4 py-2 rounded-lg border ${errors.confirmPassword ? 'border-red-500' : 'border-slate-300'} outline-none`}
+              className={`w-full px-4 py-2 rounded-lg border ${errors.confirmPassword ? 'border-red-500' : 'border-slate-300'} outline-none disabled:bg-slate-50 disabled:text-slate-500`}
               maxLength={255}
               placeholder='Konfirmasi password'
               required
               value={confirmPassword}
               onChange={handleChange}
+              disabled={isLoading}
             />
             {errors.confirmPassword && <p className="text-red-500 text-xs">{errors.confirmPassword}</p>}
           </div>
 
           <button 
             type="submit"
-            className="w-full bg-blue-600 hover:bg-blue-700 text-white font-semibold py-3 rounded-lg shadow-md transition-all active:scale-[0.98] mt-4"
+            disabled={isLoading}
+            className={`w-full text-white font-semibold py-3 rounded-lg transition-all active:scale-[0.98] mt-4 flex justify-center items-center gap-2
+              ${isLoading 
+                ? 'bg-blue-400 cursor-not-allowed shadow-none' 
+                : 'bg-blue-600 hover:bg-blue-700 shadow-md shadow-blue-200'
+              }`}
           >
-            Daftar
+            {isLoading ? (
+              <>
+                <svg className="animate-spin -ml-1 mr-2 h-5 w-5 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                  <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                  <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                </svg>
+                Memproses...
+              </>
+            ) : (
+              'Daftar'
+            )}
           </button>
         </form>
 
         <div className="mt-6 pt-4 border-t border-slate-100 text-center">
           <p className="text-sm text-slate-600">
-            Sudah punya akun? <a href="/" className="text-blue-600 font-semibold hover:underline">Login</a>
+            Sudah punya akun? <a href="/" className={`text-blue-600 font-semibold hover:underline ${isLoading ? 'pointer-events-none opacity-50' : ''}`}>Login</a>
           </p>
         </div>
       </div>
@@ -233,4 +262,4 @@ const  AdminForm = () => {
   );
 };
 
-export default  AdminForm;
+export default AdminForm;

@@ -13,6 +13,7 @@ import PanelCard from '../../components/ui/PanelCard';
 const VenuePage = () => {
   // --- STATE ---
   const [venues, setVenues] = useState([]);
+  const [isLoading, setIsLoading] = useState(true); // Tambahan state loading
 
   const [searchQuery, setSearchQuery] = useState("");
   const [selectedCity, setSelectedCity] = useState("Semua Kota");
@@ -30,6 +31,7 @@ const VenuePage = () => {
 
   useEffect(() => {
     const loadVenues = async () => {
+      setIsLoading(true); // Set loading ke true saat mulai fetch
       const data = await fetchVenues();
       
       // Transform API response to expected format
@@ -43,6 +45,7 @@ const VenuePage = () => {
       }));
       
       setVenues(transformed);
+      setIsLoading(false); // Set loading ke false setelah selesai
     };
 
     loadVenues();
@@ -232,8 +235,40 @@ const VenuePage = () => {
           </select>
         </div>
 
-        {/* Grid Venue */}
-        {filteredVenues.length > 0 ? (
+        {/* Grid Venue & Skeleton */}
+        {isLoading ? (
+          /* SKELETON SCREEN SECTION */
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+            {[...Array(6)].map((_, idx) => (
+              <div key={idx} className="bg-white rounded-2xl p-6 shadow-sm border border-slate-100 flex flex-col justify-between animate-pulse">
+                <div>
+                  <div className="flex justify-between items-start mb-4">
+                    <div className="h-6 bg-slate-200 rounded w-1/2"></div>
+                    <div className="h-5 bg-slate-200 rounded w-24"></div>
+                  </div>
+                  
+                  <div className="space-y-4 mb-6">
+                    <div className="flex items-start gap-3">
+                      <div className="w-5 h-5 bg-slate-200 rounded-full shrink-0"></div>
+                      <div className="w-full">
+                        <div className="h-4 bg-slate-200 rounded w-3/4 mb-2"></div>
+                        <div className="h-3 bg-slate-200 rounded w-1/3"></div>
+                      </div>
+                    </div>
+                    <div className="flex items-center gap-3">
+                      <div className="w-5 h-5 bg-slate-200 rounded-full shrink-0"></div>
+                      <div className="h-4 bg-slate-200 rounded w-1/2"></div>
+                    </div>
+                  </div>
+                </div>
+
+                {isAdminOrOrganizer && (
+                  <div className="w-full h-10 bg-slate-200 rounded-lg mt-2"></div>
+                )}
+              </div>
+            ))}
+          </div>
+        ) : filteredVenues.length > 0 ? (
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
             {filteredVenues.map((venue) => (
               <div key={venue.id} className="bg-white rounded-2xl p-6 shadow-sm border border-slate-100 hover:border-blue-200 hover:shadow-md transition-all flex flex-col justify-between">
