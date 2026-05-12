@@ -18,6 +18,19 @@ app.use(express.json());
 const PORT = process.env.PORT || 3000;
 const JWT_SECRET = process.env.JWT_SECRET || 'change-me';
 
+// helper: check if a column exists in a table (schema, table, column)
+async function columnExists(schema, table, column) {
+  try {
+    const r = await query(
+      `SELECT 1 FROM information_schema.columns WHERE table_schema = $1 AND table_name = $2 AND column_name = $3 LIMIT 1`,
+      [schema.toLowerCase(), table.toLowerCase(), column.toLowerCase()]
+    );
+    return r.rowCount > 0;
+  } catch (err) {
+    return false;
+  }
+}
+
 app.get('/api/health', async (req, res) => {
   try {
     const result = await query('SELECT NOW()');
@@ -226,20 +239,38 @@ app.get('/api/profile', async (req, res) => {
     const rolesRes = await query('SELECT r.role_name FROM TIKTAKTUK.ROLE r JOIN TIKTAKTUK.ACCOUNT_ROLE ar ON ar.role_id = r.role_id WHERE ar.user_id = $1', [userId]);
     const roles = rolesRes.rows.map(r => r.role_name);
 
-    // try to fetch customer and organizer rows (one may exist)
-    const cust = await query('SELECT customer_id, full_name, phone_number FROM TIKTAKTUK.CUSTOMER WHERE user_id = $1', [userId]);
-    const org = await query('SELECT organizer_id, organizer_name, contact_email FROM TIKTAKTUK.ORGANIZER WHERE user_id = $1', [userId]);
+    // determine role and only fetch relevant rows to avoid touching organizer columns for customers
+    const normalizedRoles = roles.map(r => r.toLowerCase());
+    const isCustomer = normalizedRoles.includes('customer');
+    const isOrganizer = normalizedRoles.includes('organizer');
 
-    const profile = {
+    let profile = {
       user_id: u.rows[0].user_id,
       username: u.rows[0].username,
       roles,
-      role: roles.length > 0 ? roles[0].toLowerCase() : 'customer',
-      full_name: cust.rowCount > 0 ? cust.rows[0].full_name : null,
-      phone_number: cust.rowCount > 0 ? cust.rows[0].phone_number : null,
-      organizer_name: org.rowCount > 0 ? org.rows[0].organizer_name : null,
-      contact_email: org.rowCount > 0 ? org.rows[0].contact_email : null,
+      role: normalizedRoles[0] || 'customer',
     };
+
+    if (isCustomer) {
+      const cust = await query('SELECT customer_id, full_name, phone_number FROM TIKTAKTUK.CUSTOMER WHERE user_id = $1', [userId]);
+      profile = {
+        ...profile,
+        full_name: cust.rowCount > 0 ? cust.rows[0].full_name : null,
+        phone_number: cust.rowCount > 0 ? cust.rows[0].phone_number : null,
+      };
+    }
+
+    if (isOrganizer) {
+      const hasContactEmail = await columnExists('TIKTAKTUK', 'ORGANIZER', 'contact_email');
+      const org = hasContactEmail
+        ? await query('SELECT organizer_id, organizer_name, contact_email FROM TIKTAKTUK.ORGANIZER WHERE user_id = $1', [userId])
+        : await query('SELECT organizer_id, organizer_name FROM TIKTAKTUK.ORGANIZER WHERE user_id = $1', [userId]);
+      profile = {
+        ...profile,
+        organizer_name: org.rowCount > 0 ? org.rows[0].organizer_name : null,
+        contact_email: org.rowCount > 0 && hasContactEmail ? org.rows[0].contact_email : null,
+      };
+    }
 
     res.json({ data: profile });
   } catch (err) {
@@ -252,11 +283,13 @@ app.post('/api/profile/update', async (req, res) => {
   if (!userId) return res.status(400).json({ error: 'Missing userId' });
 
   try {
-    // check roles
+    // check roles and only update relevant tables
     const rolesRes = await query('SELECT r.role_name FROM TIKTAKTUK.ROLE r JOIN TIKTAKTUK.ACCOUNT_ROLE ar ON ar.role_id = r.role_id WHERE ar.user_id = $1', [userId]);
-    const roles = rolesRes.rows.map(r => r.role_name.toLowerCase());
+    const normalized = rolesRes.rows.map(r => r.role_name.toLowerCase());
+    const updatingCustomer = normalized.includes('customer');
+    const updatingOrganizer = normalized.includes('organizer');
 
-    if (roles.includes('customer')) {
+    if (updatingCustomer) {
       const { full_name, phone_number } = req.body;
       await query(
         'INSERT INTO TIKTAKTUK.CUSTOMER (user_id, full_name, phone_number) VALUES ($1,$2,$3) ON CONFLICT (user_id) DO UPDATE SET full_name = EXCLUDED.full_name, phone_number = EXCLUDED.phone_number',
@@ -264,27 +297,40 @@ app.post('/api/profile/update', async (req, res) => {
       );
     }
 
-    if (roles.includes('organizer')) {
+    if (updatingOrganizer) {
       const { organizer_name, contact_email } = req.body;
-      await query(
-        'INSERT INTO TIKTAKTUK.ORGANIZER (user_id, organizer_name, contact_email) VALUES ($1,$2,$3) ON CONFLICT (user_id) DO UPDATE SET organizer_name = EXCLUDED.organizer_name, contact_email = EXCLUDED.contact_email',
-        [userId, organizer_name || '', contact_email || '']
-      );
+      const hasContactEmail2 = await columnExists('TIKTAKTUK', 'ORGANIZER', 'contact_email');
+      if (hasContactEmail2) {
+        await query(
+          'INSERT INTO TIKTAKTUK.ORGANIZER (user_id, organizer_name, contact_email) VALUES ($1,$2,$3) ON CONFLICT (user_id) DO UPDATE SET organizer_name = EXCLUDED.organizer_name, contact_email = EXCLUDED.contact_email',
+          [userId, organizer_name || '', contact_email || '']
+        );
+      } else {
+        await query(
+          'INSERT INTO TIKTAKTUK.ORGANIZER (user_id, organizer_name) VALUES ($1,$2) ON CONFLICT (user_id) DO UPDATE SET organizer_name = EXCLUDED.organizer_name',
+          [userId, organizer_name || '']
+        );
+      }
     }
 
     // return updated profile
     const updated = await query('SELECT u.user_id, u.username FROM TIKTAKTUK.USER_ACCOUNT u WHERE u.user_id = $1', [userId]);
-    const cust = await query('SELECT full_name, phone_number FROM TIKTAKTUK.CUSTOMER WHERE user_id = $1', [userId]);
-    const org = await query('SELECT organizer_name, contact_email FROM TIKTAKTUK.ORGANIZER WHERE user_id = $1', [userId]);
+    const profile = { user_id: updated.rows[0].user_id, username: updated.rows[0].username };
 
-    const profile = {
-      user_id: updated.rows[0].user_id,
-      username: updated.rows[0].username,
-      full_name: cust.rowCount > 0 ? cust.rows[0].full_name : null,
-      phone_number: cust.rowCount > 0 ? cust.rows[0].phone_number : null,
-      organizer_name: org.rowCount > 0 ? org.rows[0].organizer_name : null,
-      contact_email: org.rowCount > 0 ? org.rows[0].contact_email : null,
-    };
+    if (updatingCustomer) {
+      const cust = await query('SELECT full_name, phone_number FROM TIKTAKTUK.CUSTOMER WHERE user_id = $1', [userId]);
+      profile.full_name = cust.rowCount > 0 ? cust.rows[0].full_name : null;
+      profile.phone_number = cust.rowCount > 0 ? cust.rows[0].phone_number : null;
+    }
+
+    if (updatingOrganizer) {
+      const hasContactEmail3 = await columnExists('TIKTAKTUK', 'ORGANIZER', 'contact_email');
+      const org = hasContactEmail3
+        ? await query('SELECT organizer_name, contact_email FROM TIKTAKTUK.ORGANIZER WHERE user_id = $1', [userId])
+        : await query('SELECT organizer_name FROM TIKTAKTUK.ORGANIZER WHERE user_id = $1', [userId]);
+      profile.organizer_name = org.rowCount > 0 ? org.rows[0].organizer_name : null;
+      profile.contact_email = org.rowCount > 0 && hasContactEmail3 ? org.rows[0].contact_email : null;
+    }
 
     res.json({ data: profile });
   } catch (err) {
