@@ -97,9 +97,15 @@ const CustomerForm = () => {
 
     const result = await registerCustomer(normalized);
     if (!result.ok) {
-      setErrors((prev) => ({ ...prev, username: result.message }));
+      setErrors((prev) => ({ ...prev, username: result.message || 'Registrasi gagal' }));
       return;
     }
+
+    localStorage.setItem('isLoggedIn', 'true');
+    localStorage.setItem('userId', result.user?.user_id || '');
+    localStorage.setItem('userRole', 'customer');
+    localStorage.setItem('userName', result.user?.username || normalized.username);
+    localStorage.setItem('username', result.user?.username || normalized.username);
     
     alert("Registrasi Berhasil!");
     navigate('/dashboard');
@@ -152,7 +158,7 @@ const CustomerForm = () => {
               placeholder="Masukkan nomor telepon"
               className="w-full px-4 py-2 rounded-lg border border-slate-300 outline-none"
               maxLength={20}
-              pattern="^\\+?[0-9\\s\\-]{10,20}$"
+              inputMode="tel"
               required
               value={formData.phone_number}
               onChange={handleChange}

@@ -7,6 +7,8 @@ import {
   SQL_MAX_LENGTH,
   isPositiveInteger,
 } from '../../utils/formValidation';
+import StatCard from '../../components/ui/StatCard';
+import PanelCard from '../../components/ui/PanelCard';
 
 const VenuePage = () => {
   // --- STATE ---
@@ -29,7 +31,18 @@ const VenuePage = () => {
   useEffect(() => {
     const loadVenues = async () => {
       const data = await fetchVenues();
-      setVenues(data);
+      
+      // Transform API response to expected format
+      const transformed = (data || []).map(venue => ({
+        id: venue.venue_id,
+        name: venue.venue_name || 'Venue tanpa nama',
+        address: venue.address || '',
+        city: venue.city || '',
+        capacity: venue.capacity || 0,
+        seating_type: venue.jenis_seating || 'FREE_SEATING'
+      }));
+      
+      setVenues(transformed);
     };
 
     loadVenues();
@@ -45,11 +58,18 @@ const VenuePage = () => {
 
   // --- LOGIC FILTERING ---
   const filteredVenues = useMemo(() => {
+    if (!venues || venues.length === 0) return [];
+    
     return venues.filter(venue => {
-      const matchesSearch = venue.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-                           venue.address.toLowerCase().includes(searchQuery.toLowerCase());
-      const matchesCity = selectedCity === "Semua Kota" || venue.city === selectedCity;
-      const matchesSeating = selectedSeating === "Semua Tipe Seating" || venue.seating_type === selectedSeating;
+      const nameSafe = (venue.name || '').toLowerCase();
+      const addressSafe = (venue.address || '').toLowerCase();
+      const citySafe = venue.city || '';
+      const seatingTypeSafe = venue.seating_type || 'FREE_SEATING';
+      
+      const matchesSearch = nameSafe.includes(searchQuery.toLowerCase()) ||
+                           addressSafe.includes(searchQuery.toLowerCase());
+      const matchesCity = selectedCity === "Semua Kota" || citySafe === selectedCity;
+      const matchesSeating = selectedSeating === "Semua Tipe Seating" || seatingTypeSafe === selectedSeating;
       return matchesSearch && matchesCity && matchesSeating;
     });
   }, [venues, searchQuery, selectedCity, selectedSeating]);
@@ -197,9 +217,9 @@ const VenuePage = () => {
             onChange={(e) => setSelectedCity(e.target.value)}
           >
             <option>Semua Kota</option>
-            <option>Jakarta</option>
-            <option>Bandung</option>
-            <option>Yogyakarta</option>
+            {Array.from(new Set(venues.filter(v => v.city).map(v => v.city))).map(city => (
+              <option key={city} value={city}>{city}</option>
+            ))}
           </select>
           <select 
             className="px-4 py-3 rounded-xl border border-slate-200 bg-white outline-none text-sm focus:ring-2 focus:ring-blue-500 cursor-pointer font-medium"
@@ -241,188 +261,121 @@ const VenuePage = () => {
                 </div>
 
                 {isAdminOrOrganizer && (
-                  <div className="flex gap-2 pt-4 border-t border-slate-50">
-                    <button 
-                      onClick={() => openEditModal(venue)}
-                      className="flex-grow flex items-center justify-center gap-2 bg-slate-50 hover:bg-slate-100 text-slate-600 py-2.5 rounded-lg text-sm font-bold transition-colors"
-                    >
-                      <Settings size={16} /> Edit
-                    </button>
-                    <button 
-                      onClick={() => { setSelectedVenue(venue); setActiveModal('delete'); }}
-                      className="px-3 bg-red-50 hover:bg-red-100 text-red-600 py-2.5 rounded-lg text-sm font-bold transition-colors"
-                    >
-                      Hapus
-                    </button>
-                  </div>
+                  <button 
+                    onClick={() => openEditModal(venue)}
+                    className="w-full flex items-center justify-center gap-2 bg-slate-100 hover:bg-blue-50 text-slate-700 hover:text-blue-600 py-2.5 rounded-lg font-bold text-sm transition-all active:scale-95"
+                  >
+                    <Settings size={16} /> Edit Venue
+                  </button>
                 )}
               </div>
             ))}
           </div>
         ) : (
-          <div className="text-center py-20 bg-white rounded-3xl border-2 border-dashed border-slate-200 text-slate-400 font-medium">
-            Tidak ada venue ditemukan.
+          <div className="text-center py-20 bg-white rounded-3xl border border-dashed border-slate-200">
+            <AlertTriangle className="mx-auto mb-4 text-slate-400" size={40} />
+            <p className="text-slate-400 font-medium">Venue tidak ditemukan.</p>
+          </div>
+        )}
+
+        {/* Modal Create/Edit Venue */}
+        {activeModal && (
+          <div className="fixed inset-0 bg-black/50 flex items-center justify-center p-4 z-50">
+            <PanelCard className="w-full max-w-md">
+              <div className="flex justify-between items-center mb-6">
+                <h2 className="text-2xl font-bold">{activeModal === 'create' ? 'Tambah Venue' : 'Edit Venue'}</h2>
+                <button onClick={handleCloseModal} className="text-slate-400 hover:text-slate-600 transition-colors">
+                  <X size={24} />
+                </button>
+              </div>
+
+              <form onSubmit={handleSubmit} className="space-y-4">
+                {/* Name Field */}
+                <div>
+                  <label className="block text-sm font-bold text-slate-700 mb-2">Nama Venue</label>
+                  <input
+                    type="text"
+                    placeholder="Contoh: Arena Jakarta"
+                    value={formData.name}
+                    onChange={(e) => setFormData({...formData, name: e.target.value})}
+                    className="w-full px-4 py-2 rounded-lg border border-slate-200 focus:ring-2 focus:ring-blue-500 outline-none"
+                  />
+                  {errors.name && <p className="text-xs text-red-600 mt-1">{errors.name}</p>}
+                </div>
+
+                {/* Address Field */}
+                <div>
+                  <label className="block text-sm font-bold text-slate-700 mb-2">Alamat</label>
+                  <textarea
+                    placeholder="Contoh: Jl. Senayan no 1"
+                    value={formData.address}
+                    onChange={(e) => setFormData({...formData, address: e.target.value})}
+                    rows="2"
+                    className="w-full px-4 py-2 rounded-lg border border-slate-200 focus:ring-2 focus:ring-blue-500 outline-none"
+                  />
+                  {errors.address && <p className="text-xs text-red-600 mt-1">{errors.address}</p>}
+                </div>
+
+                {/* City Field */}
+                <div>
+                  <label className="block text-sm font-bold text-slate-700 mb-2">Kota</label>
+                  <input
+                    type="text"
+                    placeholder="Contoh: Jakarta"
+                    value={formData.city}
+                    onChange={(e) => setFormData({...formData, city: e.target.value})}
+                    className="w-full px-4 py-2 rounded-lg border border-slate-200 focus:ring-2 focus:ring-blue-500 outline-none"
+                  />
+                  {errors.city && <p className="text-xs text-red-600 mt-1">{errors.city}</p>}
+                </div>
+
+                {/* Capacity Field */}
+                <div>
+                  <label className="block text-sm font-bold text-slate-700 mb-2">Kapasitas</label>
+                  <input
+                    type="number"
+                    placeholder="Contoh: 5000"
+                    value={formData.capacity}
+                    onChange={(e) => setFormData({...formData, capacity: e.target.value})}
+                    className="w-full px-4 py-2 rounded-lg border border-slate-200 focus:ring-2 focus:ring-blue-500 outline-none"
+                  />
+                  {errors.capacity && <p className="text-xs text-red-600 mt-1">{errors.capacity}</p>}
+                </div>
+
+                {/* Seating Type Field */}
+                <div>
+                  <label className="block text-sm font-bold text-slate-700 mb-2">Tipe Seating</label>
+                  <select
+                    value={formData.seating_type}
+                    onChange={(e) => setFormData({...formData, seating_type: e.target.value})}
+                    className="w-full px-4 py-2 rounded-lg border border-slate-200 focus:ring-2 focus:ring-blue-500 outline-none"
+                  >
+                    <option value="RESERVED_SEATING">Reserved Seating</option>
+                    <option value="FREE_SEATING">Free Seating</option>
+                  </select>
+                </div>
+
+                {/* Buttons */}
+                <div className="flex gap-3 pt-4">
+                  <button 
+                    type="button"
+                    onClick={handleCloseModal}
+                    className="flex-1 px-4 py-2 rounded-lg border border-slate-200 text-slate-700 font-bold hover:bg-slate-50 transition-all"
+                  >
+                    Batal
+                  </button>
+                  <button 
+                    type="submit"
+                    className="flex-1 px-4 py-2 rounded-lg bg-blue-600 text-white font-bold hover:bg-blue-700 transition-all active:scale-95"
+                  >
+                    Simpan
+                  </button>
+                </div>
+              </form>
+            </PanelCard>
           </div>
         )}
       </main>
-
-      {/* --- MODAL CREATE / EDIT --- */}
-      {(activeModal === 'create' || activeModal === 'edit') && (
-        <div className="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm">
-          <div className="bg-white w-full max-w-md rounded-2xl shadow-2xl overflow-hidden animate-in fade-in zoom-in duration-200">
-            <div className="p-6 border-b border-slate-100 flex justify-between items-center bg-white">
-              <h3 className="text-xl font-bold text-slate-900">
-                {activeModal === 'create' ? 'Tambah Venue Baru' : 'Edit Venue'}
-              </h3>
-              <button onClick={handleCloseModal} className="p-1 hover:bg-slate-100 rounded-full transition-colors">
-                <X size={20} className="text-slate-400" />
-              </button>
-            </div>
-
-            <form className="p-6 space-y-4" onSubmit={handleSubmit}>
-              <div>
-                <label className="block text-sm font-bold text-slate-700 mb-1">Nama Venue</label>
-                <input 
-                  type="text" 
-                  className="w-full px-4 py-2.5 rounded-xl border border-slate-200 focus:ring-2 focus:ring-blue-500 outline-none transition-all"
-                  placeholder="Contoh: Stadion Utama"
-                  value={formData.name}
-                  onChange={(e) => setFormData((prev) => ({ ...prev, name: e.target.value }))}
-                  required
-                  maxLength={SQL_MAX_LENGTH.VENUE_NAME}
-                />
-                {errors.name && <p className="text-red-500 text-xs">{errors.name}</p>}
-              </div>
-
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <label className="block text-sm font-bold text-slate-700 mb-1">Kapasitas</label>
-                  <input 
-                    type="number"
-                    className="w-full px-4 py-2.5 rounded-xl border border-slate-200 focus:ring-2 focus:ring-blue-500 outline-none transition-all"
-                    placeholder="0"
-                    value={formData.capacity}
-                    onChange={(e) => setFormData((prev) => ({ ...prev, capacity: e.target.value }))}
-                    min={1}
-                    required
-                  />
-                  {errors.capacity && <p className="text-red-500 text-xs">{errors.capacity}</p>}
-                </div>
-                <div>
-                  <label className="block text-sm font-bold text-slate-700 mb-1">Kota</label>
-                  <input 
-                    type="text" 
-                    className="w-full px-4 py-2.5 rounded-xl border border-slate-200 focus:ring-2 focus:ring-blue-500 outline-none transition-all"
-                    placeholder="Contoh: Jakarta"
-                    maxLength={SQL_MAX_LENGTH.CITY}
-                    value={formData.city}
-                    onChange={(e) => setFormData((prev) => ({ ...prev, city: e.target.value }))}
-                    required
-                  />
-                  {errors.city && <p className="text-red-500 text-xs">{errors.city}</p>}
-                </div>
-              </div>
-
-              <div>
-                <label className="block text-sm font-bold text-slate-700 mb-1">Alamat Lengkap</label>
-                <textarea 
-                  className="w-full px-4 py-2.5 rounded-xl border border-slate-200 focus:ring-2 focus:ring-blue-500 outline-none resize-none transition-all"
-                  rows="3"
-                  placeholder="Jl. Nama Jalan No. 123..."
-                  value={formData.address}
-                  onChange={(e) => setFormData((prev) => ({ ...prev, address: e.target.value }))}
-                  required
-                />
-                {errors.address && <p className="text-red-500 text-xs">{errors.address}</p>}
-              </div>
-
-              <div className="flex items-center justify-between p-4 bg-slate-50 rounded-2xl border border-slate-100">
-                <div className="flex flex-col">
-                  <span className="text-sm font-bold text-slate-700">Has Reserved Seating</span>
-                  <span className="text-[10px] text-slate-500 uppercase font-bold tracking-wider">Aktifkan pengaturan kursi</span>
-                </div>
-                <label className="relative inline-flex items-center cursor-pointer">
-                  <input
-                    type="checkbox"
-                    className="sr-only peer"
-                    checked={formData.seating_type === 'RESERVED_SEATING'}
-                    onChange={(e) =>
-                      setFormData((prev) => ({
-                        ...prev,
-                        seating_type: e.target.checked ? 'RESERVED_SEATING' : 'FREE_SEATING',
-                      }))
-                    }
-                  />
-                  <div className="w-11 h-6 bg-slate-200 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-blue-600"></div>
-                </label>
-              </div>
-
-              <div className="flex gap-3 pt-4">
-                <button 
-                  type="button"
-                  onClick={handleCloseModal}
-                  className="flex-1 px-4 py-3 rounded-xl border border-slate-200 text-slate-600 font-bold hover:bg-slate-50 transition-all"
-                >
-                  Batal
-                </button>
-                <button 
-                  type="submit"
-                  className="flex-1 px-4 py-3 rounded-xl bg-blue-600 text-white font-bold hover:bg-blue-700 shadow-lg shadow-blue-100 transition-all"
-                >
-                  {activeModal === 'create' ? 'Simpan Venue' : 'Simpan Perubahan'}
-                </button>
-              </div>
-            </form>
-          </div>
-        </div>
-      )}
-
-      {/* --- MODAL DELETE --- */}
-      {activeModal === 'delete' && (
-        <div className="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm">
-          <div className="bg-white w-full max-w-sm rounded-2xl shadow-2xl p-6 text-center animate-in fade-in zoom-in duration-200">
-            <div className="w-16 h-16 bg-red-50 text-red-600 rounded-full flex items-center justify-center mx-auto mb-4">
-              <AlertTriangle size={32} />
-            </div>
-            <h3 className="text-xl font-bold text-slate-900 mb-2">Hapus Venue?</h3>
-            <p className="text-slate-500 text-sm mb-6 leading-relaxed">
-              Anda akan menghapus <span className="font-bold text-slate-800">"{selectedVenue?.name}"</span>. Data yang dihapus tidak dapat dikembalikan.
-            </p>
-            <div className="flex gap-3">
-              <button 
-                onClick={handleCloseModal}
-                className="flex-1 px-4 py-3 rounded-xl border border-slate-200 text-slate-600 font-bold hover:bg-slate-50 transition-all"
-              >
-                Batal
-              </button>
-              <button 
-                className="flex-1 px-4 py-3 rounded-xl bg-red-600 text-white font-bold hover:bg-red-700 shadow-lg shadow-red-100 transition-all"
-              >
-                Ya, Hapus
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-    </div>
-  );
-};
-
-// --- HELPER SUB-COMPONENTS ---
-const StatCard = ({ icon, label, value, color }) => {
-  const colorMap = {
-    blue: "bg-blue-50 text-blue-600",
-    amber: "bg-amber-50 text-amber-600",
-    emerald: "bg-emerald-50 text-emerald-600",
-  };
-
-  return (
-    <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-100 flex items-center gap-4 transition-transform hover:scale-[1.02]">
-      <div className={`p-3 rounded-xl ${colorMap[color]}`}>{icon}</div>
-      <div>
-        <p className="text-xs text-slate-500 font-bold uppercase tracking-wider">{label}</p>
-        <h3 className="text-2xl font-bold text-slate-900 leading-none mt-1">{value}</h3>
-      </div>
     </div>
   );
 };

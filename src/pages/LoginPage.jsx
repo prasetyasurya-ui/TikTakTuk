@@ -2,9 +2,11 @@ import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { login } from '../services/api';
 import { normalizeText, isValidPassword } from '../utils/formValidation';
+import { useAuth } from '../contexts/AuthContext';
 
 const LoginPage = () => {
   const navigate = useNavigate();
+  const { signIn } = useAuth();
   const [error, setError] = useState('');
   const [formData, setFormData] = useState({ username: '', password: '' });
 
@@ -32,9 +34,21 @@ const LoginPage = () => {
 
     const result = await login(username, password);
     if (!result.ok) {
-      setError(result.message);
+      setError(result.message || 'Login gagal.');
       return;
     }
+
+    const role = Array.isArray(result.user?.roles) && result.user.roles.length > 0
+      ? String(result.user.roles[0]).toLowerCase()
+      : 'customer';
+
+    signIn({
+      userId: result.user?.user_id || '',
+      userRole: role,
+      userName: result.user?.username || username,
+      username: result.user?.username || username,
+      token: result.token || '',
+    });
 
     navigate('/dashboard');
   };

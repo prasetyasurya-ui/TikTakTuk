@@ -12,14 +12,23 @@ async function mockRequest(method, url, options = {}) {
 }
 
 async function httpRequest(method, url, options = {}) {
-  const fullUrl = `${BASE_URL}${url.startsWith('/') ? url : `/${url}`}`;
+  const fullUrlObject = new URL(`${BASE_URL}${url.startsWith('/') ? url : `/${url}`}`);
+
+  if (options.params && typeof options.params === 'object') {
+    Object.entries(options.params).forEach(([key, value]) => {
+      if (value !== undefined && value !== null && value !== '') {
+        fullUrlObject.searchParams.set(key, String(value));
+      }
+    });
+  }
+
   const fetchOptions = {
     method,
     headers: { 'Content-Type': 'application/json', ...(options.headers || {}) },
   };
   if (options.data) fetchOptions.body = JSON.stringify(options.data);
 
-  const res = await fetch(fullUrl, fetchOptions);
+  const res = await fetch(fullUrlObject.toString(), fetchOptions);
   const text = await res.text();
   let data = text;
   try { data = text ? JSON.parse(text) : {}; } catch (e) { /* not json */ }

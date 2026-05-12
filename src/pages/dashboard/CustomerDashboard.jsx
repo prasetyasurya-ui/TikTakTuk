@@ -1,9 +1,22 @@
 import React, { useEffect, useState } from 'react';
 import Navbar from '../../components/Navbar';
-import { getCurrentSession, fetchCustomerDashboard } from '../../services/api';
+import { fetchCustomerDashboard } from '../../services/api';
+import { useAuth } from '../../contexts/AuthContext';
+
+const FALLBACK_CUSTOMER = {
+  nama: 'User',
+  stats: {
+    tiket_aktif: 0,
+    acara_diikuti: 0,
+    promo_tersedia: 0,
+    total_belanja_bulan_ini: 'Rp 0',
+  },
+  upcoming_tickets: [],
+};
 
 const CustomerDashboard = () => {
-  const session = getCurrentSession();
+  const { session } = useAuth();
+
   const [customer, setCustomer] = useState({
     nama: 'User',
     stats: {
@@ -17,12 +30,17 @@ const CustomerDashboard = () => {
 
   useEffect(() => {
     const loadCustomerDashboard = async () => {
+      if (!session?.userId) {
+        setCustomer(FALLBACK_CUSTOMER);
+        return;
+      }
+
       const data = await fetchCustomerDashboard(session.userId);
-      setCustomer(data);
+      setCustomer(data || FALLBACK_CUSTOMER);
     };
 
     loadCustomerDashboard();
-  }, [session.userId]);
+  }, [session?.userId]);
 
   return (
     <div className="min-h-screen bg-slate-50">
