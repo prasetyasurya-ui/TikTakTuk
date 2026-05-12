@@ -1,10 +1,12 @@
 import React, { useEffect, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import Navbar from '../../components/Navbar';
 import { fetchAdminDashboard } from '../../services/api';
 import PanelCard from '../../components/ui/PanelCard';
 import StatCard from '../../components/ui/StatCard';
 
 const AdminDashboard = () => {
+  const navigate = useNavigate();
   const [isLoading, setIsLoading] = useState(true); // Tambahan state loading
   const [adminStats, setAdminStats] = useState({
     platform: {
@@ -181,7 +183,9 @@ const AdminDashboard = () => {
                   <p className="text-sm font-medium text-slate-700">{adminStats.infrastruktur_venue.kapasitas_terbesar}</p>
                 </div>
               </div>
-              <div className="p-6 bg-slate-50 border-t border-slate-100">
+              <div class
+                  onClick={() => navigate('/venue')}
+                  Name="p-6 bg-slate-50 border-t border-slate-100">
                 <button className="w-full bg-white border border-slate-200 text-slate-700 font-bold py-3 rounded-2xl hover:bg-slate-100 transition-all text-sm">
                   Kelola Seluruh Venue
                 </button>

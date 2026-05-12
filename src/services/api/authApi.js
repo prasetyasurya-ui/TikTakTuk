@@ -24,6 +24,11 @@ export async function registerOrganizer(payload) {
 	return toAuthResult(response);
 }
 
+export async function registerAdmin(payload) {
+	const response = await apiClient.post('/auth/register/admin', payload);
+	return toAuthResult(response);
+}
+
 export async function logout() {
 	await apiClient.post('/auth/logout');
 }

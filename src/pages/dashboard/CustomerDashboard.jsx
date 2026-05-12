@@ -66,20 +66,6 @@ const CustomerDashboard = () => {
           <p className="text-slate-500 mt-1">Berikut adalah ringkasan aktivitas pertunjukkan Anda.</p>
         </div>
 
-        {loading && (
-          <div className="mb-6">
-            <div className="animate-pulse space-y-3">
-              <div className="h-6 bg-slate-200 rounded w-1/3" />
-              <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mt-4">
-                <div className="h-20 bg-slate-200 rounded" />
-                <div className="h-20 bg-slate-200 rounded" />
-                <div className="h-20 bg-slate-200 rounded" />
-                <div className="h-20 bg-slate-200 rounded" />
-              </div>
-            </div>
-          </div>
-        )}
-
         {error && (
           <div className="mb-6">
             <div className="text-sm text-red-600 font-medium">{error}</div>
@@ -87,24 +73,36 @@ const CustomerDashboard = () => {
         )}
 
         {/* Section: Ringkasan Statistik */}
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6 mb-12">
-          <div className="bg-white p-6 rounded-3xl border border-slate-200 shadow-sm">
-            <p className="text-xs font-bold text-slate-400 uppercase tracking-wider">Tiket Aktif</p>
-            <h3 className="text-2xl font-black text-blue-600 mt-1">{customer.stats.tiket_aktif}</h3>
+        {loading ? (
+          /* SKELETON STATISTIK */
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6 mb-12">
+            {[...Array(4)].map((_, idx) => (
+              <div key={idx} className="bg-white p-6 rounded-3xl border border-slate-200 shadow-sm animate-pulse flex flex-col justify-center h-[104px]">
+                <div className="h-3 bg-slate-200 rounded w-1/2 mb-3"></div>
+                <div className="h-7 bg-slate-200 rounded w-3/4"></div>
+              </div>
+            ))}
           </div>
-          <div className="bg-white p-6 rounded-3xl border border-slate-200 shadow-sm">
-            <p className="text-xs font-bold text-slate-400 uppercase tracking-wider">Acara Diikuti</p>
-            <h3 className="text-2xl font-black text-slate-900 mt-1">{customer.stats.acara_diikuti}</h3>
+        ) : (
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6 mb-12">
+            <div className="bg-white p-6 rounded-3xl border border-slate-200 shadow-sm">
+              <p className="text-xs font-bold text-slate-400 uppercase tracking-wider">Tiket Aktif</p>
+              <h3 className="text-2xl font-black text-blue-600 mt-1">{customer.stats.tiket_aktif}</h3>
+            </div>
+            <div className="bg-white p-6 rounded-3xl border border-slate-200 shadow-sm">
+              <p className="text-xs font-bold text-slate-400 uppercase tracking-wider">Acara Diikuti</p>
+              <h3 className="text-2xl font-black text-slate-900 mt-1">{customer.stats.acara_diikuti}</h3>
+            </div>
+            <div className="bg-white p-6 rounded-3xl border border-slate-200 shadow-sm">
+              <p className="text-xs font-bold text-slate-400 uppercase tracking-wider">Promo Tersedia</p>
+              <h3 className="text-2xl font-black text-emerald-600 mt-1">{customer.stats.promo_tersedia}</h3>
+            </div>
+            <div className="bg-white p-6 rounded-3xl border border-slate-200 shadow-sm">
+              <p className="text-xs font-bold text-slate-400 uppercase tracking-wider">Belanja Bulan Ini</p>
+              <h3 className="text-2xl font-black text-slate-900 mt-1">{customer.stats.total_belanja_bulan_ini}</h3>
+            </div>
           </div>
-          <div className="bg-white p-6 rounded-3xl border border-slate-200 shadow-sm">
-            <p className="text-xs font-bold text-slate-400 uppercase tracking-wider">Promo Tersedia</p>
-            <h3 className="text-2xl font-black text-emerald-600 mt-1">{customer.stats.promo_tersedia}</h3>
-          </div>
-          <div className="bg-white p-6 rounded-3xl border border-slate-200 shadow-sm">
-            <p className="text-xs font-bold text-slate-400 uppercase tracking-wider">Belanja Bulan Ini</p>
-            <h3 className="text-2xl font-black text-slate-900 mt-1">{customer.stats.total_belanja_bulan_ini}</h3>
-          </div>
-        </div>
+        )}
 
         {/* Section: Tiket Mendatang */}
         <section>
@@ -115,54 +113,94 @@ const CustomerDashboard = () => {
             </button>
           </div>
 
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
-            {customer.upcoming_tickets.map((ticket) => (
-              <div key={ticket.id} className="bg-white rounded-3xl overflow-hidden border border-slate-200 shadow-sm flex flex-col sm:flex-row">
-                {/* Visual Accent */}
-                <div className="bg-blue-600 sm:w-4 flex items-center justify-center">
-                   <div className="hidden sm:block w-px h-1/2 border-l border-dashed border-white/50"></div>
-                </div>
-
-                <div className="p-8 flex-grow">
-                  <div className="flex justify-between items-start mb-4">
-                    <span className="px-3 py-1 bg-blue-50 text-blue-700 text-[10px] font-black uppercase rounded-lg">
-                      {ticket.jenis_tiket}
-                    </span>
-                    <p className="text-[10px] font-mono text-slate-400 uppercase tracking-widest">{ticket.id}</p>
-                  </div>
-
-                  <h3 className="text-xl font-bold text-slate-900 mb-4">{ticket.nama_event}</h3>
-                  
-                  <div className="space-y-3">
-                    <div className="flex items-center text-sm text-slate-600 gap-3">
-                      <span className="text-lg">📅</span>
-                      <div>
-                        <p className="font-semibold">{ticket.tanggal_event}</p>
-                        <p className="text-xs text-slate-400">{ticket.waktu_mulai}</p>
-                      </div>
+          {loading ? (
+            /* SKELETON TIKET */
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+              {[...Array(2)].map((_, idx) => (
+                <div key={idx} className="bg-white rounded-3xl overflow-hidden border border-slate-200 shadow-sm flex flex-col sm:flex-row animate-pulse">
+                  <div className="bg-slate-200 sm:w-4 flex items-center justify-center"></div>
+                  <div className="p-8 flex-grow">
+                    <div className="flex justify-between items-start mb-4">
+                      <div className="h-5 bg-slate-200 rounded-lg w-16"></div>
+                      <div className="h-3 bg-slate-200 rounded w-24 mt-1"></div>
                     </div>
                     
-                    <div className="flex items-center text-sm text-slate-600 gap-3">
-                      <span className="text-lg">📍</span>
-                      <p className="font-medium">{ticket.lokasi_event}</p>
+                    <div className="h-7 bg-slate-200 rounded w-3/4 mb-4"></div>
+                    
+                    <div className="space-y-4">
+                      <div className="flex items-center gap-3">
+                        <div className="w-5 h-5 bg-slate-200 rounded-full"></div>
+                        <div>
+                          <div className="h-4 bg-slate-200 rounded w-24 mb-1.5"></div>
+                          <div className="h-3 bg-slate-200 rounded w-16"></div>
+                        </div>
+                      </div>
+                      
+                      <div className="flex items-center gap-3">
+                        <div className="w-5 h-5 bg-slate-200 rounded-full"></div>
+                        <div className="h-4 bg-slate-200 rounded w-40"></div>
+                      </div>
+                    </div>
+
+                    <div className="mt-8 pt-6 border-t border-slate-50">
+                      <div className="w-full h-12 bg-slate-200 rounded-2xl"></div>
                     </div>
                   </div>
-
-                  <div className="mt-8 pt-6 border-t border-slate-50">
-                    <button className="w-full bg-slate-900 text-white font-bold py-3 rounded-2xl hover:bg-blue-600 transition-all active:scale-95 shadow-lg shadow-slate-200">
-                      Tampilkan Barcode
-                    </button>
-                  </div>
                 </div>
-              </div>
-            ))}
-          </div>
-
-          {/* Empty State Handler */}
-          {customer.upcoming_tickets.length === 0 && (
-            <div className="text-center py-20 bg-white rounded-3xl border-2 border-dashed border-slate-100">
-              <p className="text-slate-400">Tidak ada tiket mendatang. Mulai jelajahi event!</p>
+              ))}
             </div>
+          ) : (
+            <>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+                {customer.upcoming_tickets.map((ticket) => (
+                  <div key={ticket.id} className="bg-white rounded-3xl overflow-hidden border border-slate-200 shadow-sm flex flex-col sm:flex-row">
+                    {/* Visual Accent */}
+                    <div className="bg-blue-600 sm:w-4 flex items-center justify-center">
+                       <div className="hidden sm:block w-px h-1/2 border-l border-dashed border-white/50"></div>
+                    </div>
+
+                    <div className="p-8 flex-grow">
+                      <div className="flex justify-between items-start mb-4">
+                        <span className="px-3 py-1 bg-blue-50 text-blue-700 text-[10px] font-black uppercase rounded-lg">
+                          {ticket.jenis_tiket}
+                        </span>
+                        <p className="text-[10px] font-mono text-slate-400 uppercase tracking-widest">{ticket.id}</p>
+                      </div>
+
+                      <h3 className="text-xl font-bold text-slate-900 mb-4">{ticket.nama_event}</h3>
+                      
+                      <div className="space-y-3">
+                        <div className="flex items-center text-sm text-slate-600 gap-3">
+                          <span className="text-lg">📅</span>
+                          <div>
+                            <p className="font-semibold">{ticket.tanggal_event}</p>
+                            <p className="text-xs text-slate-400">{ticket.waktu_mulai}</p>
+                          </div>
+                        </div>
+                        
+                        <div className="flex items-center text-sm text-slate-600 gap-3">
+                          <span className="text-lg">📍</span>
+                          <p className="font-medium">{ticket.lokasi_event}</p>
+                        </div>
+                      </div>
+
+                      <div className="mt-8 pt-6 border-t border-slate-50">
+                        <button className="w-full bg-slate-900 text-white font-bold py-3 rounded-2xl hover:bg-blue-600 transition-all active:scale-95 shadow-lg shadow-slate-200">
+                          Tampilkan Barcode
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+
+              {/* Empty State Handler */}
+              {customer.upcoming_tickets.length === 0 && (
+                <div className="text-center py-20 bg-white rounded-3xl border-2 border-dashed border-slate-100">
+                  <p className="text-slate-400">Tidak ada tiket mendatang. Mulai jelajahi event!</p>
+                </div>
+              )}
+            </>
           )}
         </section>
       </main>

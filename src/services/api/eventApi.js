@@ -1,70 +1,99 @@
 import { apiClient } from '../core/apiClient';
 
+// READ: Fetch all events
 export async function fetchEvents() {
-  const response = await apiClient.get('/events');
-  return response.data.events || [];
+  try {
+    const response = await apiClient.get('/events');
+    return response.data.events || [];
+  } catch (error) {
+    console.error('Error fetching events:', error);
+    return [];
+  }
 }
 
+// READ: Fetch single event by ID
+export async function fetchEventById(eventId) {
+  try {
+    const response = await apiClient.get(`/events/${eventId}`);
+    return response.data.event || null;
+  } catch (error) {
+    console.error('Error fetching event:', error);
+    return null;
+  }
+}
+  
+// CREATE: Create new event
+export async function createEvent(eventData) {
+  try {
+    const { event_title, event_datetime, venue_id, organizer_id, description, artists } = eventData;
+    
+    const response = await apiClient.post('/events', {
+      event_title,
+      event_datetime,
+      venue_id,
+      organizer_id,
+      description: description || '',
+      artists: Array.isArray(artists) ? artists : []
+    });
+
+    return {
+      success: true,
+      event: response.data.event
+    };
+  } catch (error) {
+    console.error('Error creating event:', error);
+    return {
+      success: false,
+      error: error.response?.data?.error || error.message
+    };
+  }
+}
+
+// UPDATE: Update existing event
+export async function updateEvent(eventId, eventData) {
+  try {
+    const { event_title, event_datetime, venue_id, organizer_id, description, artists } = eventData;
+    
+    const response = await apiClient.put(`/events/${eventId}`, {
+      event_title,
+      event_datetime,
+      venue_id,
+      organizer_id,
+      description: description || '',
+      artists: Array.isArray(artists) ? artists : []
+    });
+
+    return {
+      success: true,
+      event: response.data.event
+    };
+  } catch (error) {
+    console.error('Error updating event:', error);
+    return {
+      success: false,
+      error: error.response?.data?.error || error.message
+    };
+  }
+}
+
+// Legacy: Fetch management data (for EventManagementPage)
 export async function fetchEventManagementData({ userRole, userId }) {
-  const response = await apiClient.get('/events/management', {
-    params: { userRole, userId },
-  });
+  try {
+    const response = await apiClient.get('/events/management', {
+      params: { userRole, userId },
+    });
 
-  return {
-    venues: response.data.venues || [],
-    artists: response.data.artists || [],
-    events: response.data.events || [],
-  };
-}
-
-export async function createVenue({ name, seating_type, address, city, capacity }) {
-  const mapLabelToJenis = (label) => {
-    if (!label) return undefined;
-    const l = String(label).toLowerCase();
-    if (l.includes('reserv')) return 'RESERVED_SEATING';
-    return 'FREE_SEATING';
-  };
-
-  const payload = {
-    name,
-    seating_type,
-    jenis_seating: mapLabelToJenis(seating_type),
-    address,
-    city,
-    capacity,
-  };
-
-  const response = await apiClient.post('/events/create', {
-    params: payload,
-  });
-
-  return {
-    venue: response.data.venue || response.data,
-  };
-}
-
-export async function updateVenue({ name, seating_type, address, city, capacity }) {
-  const mapLabelToJenis = (label) => {
-    if (!label) return undefined;
-    const l = String(label).toLowerCase();
-    if (l.includes('reserv')) return 'RESERVED_SEATING';
-    return 'FREE_SEATING';
-  };
-
-  const payload = {
-    name,
-    seating_type,
-    jenis_seating: mapLabelToJenis(seating_type),
-    address,
-    city,
-    capacity,
-  };
-
-  const response = await apiClient.post('/events/edit', {
-    params: payload,
-  });
-
-  return {
-    venue: response.data.venue || response.data,
-  };
+    return {
+      venues: response.data.venues || [],
+      artists: response.data.artists || [],
+      events: response.data.events || [],
+    };
+  } catch (error) {
+    console.error('Error fetching management data:', error);
+    return {
+      venues: [],
+      artists: [],
+      events: []
+    };
+  }
 }
