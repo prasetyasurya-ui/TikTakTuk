@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { registerCustomer } from '../../services/api';
+import { registerAdmin } from '../../services/api';
 import {
   normalizeText,
   normalizePhone,
@@ -99,7 +99,7 @@ const AdminForm = () => {
     setIsLoading(true); // Set loading ke true saat mulai request
 
     try {
-      const result = await registerCustomer(normalized);
+      const result = await registerAdmin(normalized);
       if (!result.ok) {
         setErrors((prev) => ({ ...prev, username: result.message || 'Registrasi gagal' }));
         setIsLoading(false); // Set loading ke false jika gagal
