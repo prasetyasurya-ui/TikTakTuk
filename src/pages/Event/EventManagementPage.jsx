@@ -4,7 +4,7 @@ import {
   Settings, Plus, X, Trash2, Clock, AlignLeft 
 } from 'lucide-react';
 import Navbar from '../../components/Navbar';
-import { getCurrentSession, fetchEventManagementData } from '../../services/api';
+import { getCurrentSession, fetchEventManagementData, createEvent, updateEvent } from '../../services/api';
 import {
   normalizeText,
   SQL_MAX_LENGTH,
@@ -17,6 +17,40 @@ const EventManagementPage = () => {
   const userRole = session.userRole || 'admin';
   const userId = session.userId;
 
+  const normalizeVenue = (venue) => ({
+    id: venue.venue_id,
+    name: venue.venue_name,
+    city: venue.city,
+    seating_type: venue.jenis_seating,
+  });
+
+  const normalizeArtist = (artist) => ({
+    id: artist.artist_id,
+    name: artist.name,
+    genre: artist.genre,
+  });
+
+  const normalizeEvent = (event) => {
+    const eventDate = event.event_datetime ? event.event_datetime.split('T')[0] : '';
+    const eventTime = event.event_datetime ? event.event_datetime.split('T')[1]?.substring(0, 5) : '';
+
+    return {
+      id: event.event_id,
+      event_id: event.event_id,
+      title: event.event_title || '',
+      event_title: event.event_title || '',
+      date: eventDate,
+      time: eventTime,
+      venue: event.venue_id || '',
+      venue_name: event.venue_name || '',
+      venue_id: event.venue_id || '',
+      organizerName: event.organizer_name || '',
+      description: event.description || '',
+      artists: Array.isArray(event.artists) ? event.artists : [],
+      categories: Array.isArray(event.categories) ? event.categories : [{ name: 'Regular', price: 100000, quota: 100 }],
+    };
+  };
+
   // --- DATA MASTER ---
   const [venues, setVenues] = useState([]);
   const [availableArtists, setAvailableArtists] = useState([]);
@@ -26,9 +60,9 @@ const EventManagementPage = () => {
   useEffect(() => {
     const loadManagementData = async () => {
       const data = await fetchEventManagementData({ userRole, userId });
-      setVenues(data.venues);
-      setAvailableArtists(data.artists);
-      setEvents(data.events);
+      setVenues((data.venues || []).map(normalizeVenue));
+      setAvailableArtists((data.artists || []).map(normalizeArtist));
+      setEvents((data.events || []).map(normalizeEvent));
     };
 
     loadManagementData();
@@ -39,31 +73,45 @@ const EventManagementPage = () => {
 
   // --- STATE MODAL & FORM ---
   const [activeModal, setActiveModal] = useState(null);
+  const [selectedEvent, setSelectedEvent] = useState(null);
   const [formEvent, setFormEvent] = useState({
+    id: null,
     title: '', date: '', time: '', venue: '', description: '',
     artists: [],
     categories: [{ name: "Regular", price: 100000, quota: 100 }]
   });
   const [formErrors, setFormErrors] = useState({});
+  const [isSubmitting, setIsSubmitting] = useState(false);
 
   // --- HANDLERS ---
   const openCreateModal = () => {
     setFormEvent({
-      title: '', date: '', time: '', venue: venues[0] || '', description: '',
+      title: '', date: '', time: '', venue: venues[0]?.id || '', description: '',
       artists: [],
       categories: [{ name: "Regular", price: 100000, quota: 100 }]
     });
     setFormErrors({});
+    setSelectedEvent(null);
     setActiveModal('create');
   };
 
   const openEditModal = (event) => {
-    // Extract artist names from event.artists array for form state
-    const artistNames = event.artists?.map(a => a.name) || [];
+    const artistIds = (event.artists || [])
+      .map((artist) => artist?.artist_id || artist?.id || artist?.artistId || artist)
+      .filter(Boolean)
+      .map((artistId) => String(artistId));
+
     setFormEvent({ 
-      ...event,
-      artists: artistNames
+      id: event.event_id,
+      title: event.event_title || '',
+      date: event.date || '',
+      time: event.time || '',
+      venue: event.venue_id || '',
+      description: event.description || '',
+      artists: artistIds,
+      categories: event.categories || [{ name: "Regular", price: 100000, quota: 100 }]
     });
+    setSelectedEvent(event);
     setFormErrors({});
     setActiveModal('edit');
   };
@@ -87,14 +135,15 @@ const EventManagementPage = () => {
   };
 
   const toggleArtist = (artist) => {
+    const artistId = String(artist.id);
     const current = formEvent.artists;
-    const updated = current.includes(artist) 
-      ? current.filter(a => a !== artist) 
-      : [...current, artist];
+    const updated = current.includes(artistId) 
+      ? current.filter(a => a !== artistId) 
+      : [...current, artistId];
     setFormEvent({ ...formEvent, artists: updated });
   };
 
-  const handleSaveEvent = () => {
+  const handleSaveEvent = async () => {
     const nextErrors = {};
 
     const title = normalizeText(formEvent.title);
@@ -139,6 +188,40 @@ const EventManagementPage = () => {
       return;
     }
 
+    setIsSubmitting(true);
+
+    // Prepare API payload with proper date/time format
+    const datetime = `${formEvent.date}T${formEvent.time}:00`;
+    
+    const eventData = {
+      event_title: title,
+      event_datetime: datetime,
+      venue_id: formEvent.venue,
+      organizer_id: userId || 1,
+      description: formEvent.description,
+      artists: formEvent.artists
+    };
+
+    let result;
+    if (activeModal === 'create') {
+      result = await createEvent(eventData);
+    } else if (activeModal === 'edit' && selectedEvent) {
+      result = await updateEvent(selectedEvent.event_id, eventData);
+    }
+
+    setIsSubmitting(false);
+
+    if (!result.success) {
+      setFormErrors((prev) => ({ ...prev, submit: result.error || 'Gagal menyimpan acara.' }));
+      return;
+    }
+
+    // Reload events after successful save
+    const data = await fetchEventManagementData({ userRole, userId });
+    setVenues((data.venues || []).map(normalizeVenue));
+    setAvailableArtists((data.artists || []).map(normalizeArtist));
+    setEvents((data.events || []).map(normalizeEvent));
+    
     setActiveModal(null);
   };
 
@@ -185,7 +268,7 @@ const EventManagementPage = () => {
                 
                 <div className="space-y-1.5 text-[10px] text-slate-500 font-medium mb-3">
                   <div className="flex items-center gap-2"><Calendar size={12} /> {event.date} {event.time}</div>
-                  <div className="flex items-center gap-2"><MapPin size={12} /> {event.venue}</div>
+                  <div className="flex items-center gap-2"><MapPin size={12} /> {event.venue_name || event.venue}</div>
                 </div>
 
                 {/* Artist Section */}
@@ -297,7 +380,12 @@ const EventManagementPage = () => {
                     className="w-full px-4 py-2.5 rounded-xl border border-slate-200 bg-white text-sm outline-none"
                     required
                   >
-                    {venues.map(v => <option key={v} value={v}>{v}</option>)}
+                    <option value="">Pilih venue</option>
+                    {venues.map(v => (
+                      <option key={v.id} value={v.id}>
+                        {v.name}{v.city ? ` - ${v.city}` : ''}
+                      </option>
+                    ))}
                   </select>
                   {formErrors.venue && <p className="text-red-500 text-xs mt-1">{formErrors.venue}</p>}
                 </div>
@@ -307,16 +395,16 @@ const EventManagementPage = () => {
                   <div className="flex flex-wrap gap-2">
                     {availableArtists.map(artist => (
                       <button
-                        key={artist}
+                        key={artist.id}
                         type="button"
                         onClick={() => toggleArtist(artist)}
                         className={`px-3 py-1 rounded-lg text-[10px] font-bold border transition-all ${
-                          formEvent.artists.includes(artist) 
+                          formEvent.artists.includes(String(artist.id)) 
                           ? 'bg-blue-600 border-blue-600 text-white' 
                           : 'bg-white border-slate-200 text-slate-500 hover:border-blue-300'
                         }`}
                       >
-                        {artist}
+                        {artist.name}
                       </button>
                     ))}
                   </div>
@@ -423,9 +511,10 @@ const EventManagementPage = () => {
               <button 
                 type="button"
                 onClick={handleSaveEvent}
-                className="flex-1 px-6 py-2.5 rounded-xl bg-blue-600 text-white text-sm font-bold hover:bg-blue-700 shadow-lg shadow-blue-100 transition-all"
+                disabled={isSubmitting}
+                className="flex-1 px-6 py-2.5 rounded-xl bg-blue-600 text-white text-sm font-bold hover:bg-blue-700 shadow-lg shadow-blue-100 transition-all disabled:opacity-50"
               >
-                {activeModal === 'create' ? 'Publikasikan Acara' : 'Simpan Perubahan'}
+                {isSubmitting ? 'Menyimpan...' : (activeModal === 'create' ? 'Publikasikan Acara' : 'Simpan Perubahan')}
               </button>
             </div>
           </div>
