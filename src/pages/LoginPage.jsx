@@ -2,9 +2,11 @@ import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { login } from '../services/api';
 import { normalizeText, isValidPassword } from '../utils/formValidation';
+import { useAuth } from '../contexts/AuthContext';
 
 const LoginPage = () => {
   const navigate = useNavigate();
+  const { signIn } = useAuth();
   const [error, setError] = useState('');
   const [formData, setFormData] = useState({ username: '', password: '' });
 
@@ -40,12 +42,13 @@ const LoginPage = () => {
       ? String(result.user.roles[0]).toLowerCase()
       : 'customer';
 
-    localStorage.setItem('isLoggedIn', 'true');
-    localStorage.setItem('userId', result.user?.user_id || '');
-    localStorage.setItem('userRole', role);
-    localStorage.setItem('userName', result.user?.username || username);
-    localStorage.setItem('username', result.user?.username || username);
-    if (result.token) localStorage.setItem('token', result.token);
+    signIn({
+      userId: result.user?.user_id || '',
+      userRole: role,
+      userName: result.user?.username || username,
+      username: result.user?.username || username,
+      token: result.token || '',
+    });
 
     navigate('/dashboard');
   };

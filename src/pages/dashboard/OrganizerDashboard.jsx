@@ -1,11 +1,12 @@
 import React, { useEffect, useState } from 'react';
 import Navbar from '../../components/Navbar';
-import { getCurrentSession, fetchOrganizerDashboard } from '../../services/api';
+import { fetchOrganizerDashboard } from '../../services/api';
 import PanelCard from '../../components/ui/PanelCard';
 import StatCard from '../../components/ui/StatCard';
+import { useAuth } from '../../contexts/AuthContext';
 
 const OrganizerDashboard = () => {
-  const session = getCurrentSession();
+  const { session } = useAuth();
   const [organizerStats, setOrganizerStats] = useState({
     ringkasan: {
       acara_aktif: 0,

@@ -1,7 +1,8 @@
 import React from 'react';
 import { useNavigate, Link } from 'react-router-dom';
-import { getCurrentSession, logout } from '../services/api';
+import { logout } from '../services/api';
 import NavLinkItem from './navigation/NavLinkItem';
+import { useAuth } from '../contexts/AuthContext';
 
 const NAV_LINKS = {
   guest: [
@@ -48,7 +49,7 @@ const NAV_LINKS = {
 
 const Navbar = () => {
   const navigate = useNavigate();
-  const session = getCurrentSession();
+  const { session, signOut } = useAuth();
   
   const isLoggedIn = session.isLoggedIn;
   const userRole = session.userRole;
@@ -57,6 +58,7 @@ const Navbar = () => {
 
   const handleLogout = async () => {
     await logout();
+    signOut();
     navigate('/');
   };
 
