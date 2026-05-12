@@ -32,9 +32,20 @@ const LoginPage = () => {
 
     const result = await login(username, password);
     if (!result.ok) {
-      setError(result.message);
+      setError(result.message || 'Login gagal.');
       return;
     }
+
+    const role = Array.isArray(result.user?.roles) && result.user.roles.length > 0
+      ? String(result.user.roles[0]).toLowerCase()
+      : 'customer';
+
+    localStorage.setItem('isLoggedIn', 'true');
+    localStorage.setItem('userId', result.user?.user_id || '');
+    localStorage.setItem('userRole', role);
+    localStorage.setItem('userName', result.user?.username || username);
+    localStorage.setItem('username', result.user?.username || username);
+    if (result.token) localStorage.setItem('token', result.token);
 
     navigate('/dashboard');
   };

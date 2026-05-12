@@ -111,9 +111,15 @@ const OrganizerForm = () => {
     const result = await registerOrganizer(normalized);
 
     if (!result.ok) {
-      setErrors((prev) => ({ ...prev, username: result.message }));
+      setErrors((prev) => ({ ...prev, username: result.message || 'Registrasi gagal' }));
       return;
     }
+
+    localStorage.setItem('isLoggedIn', 'true');
+    localStorage.setItem('userId', result.user?.user_id || '');
+    localStorage.setItem('userRole', 'organizer');
+    localStorage.setItem('userName', result.user?.username || normalized.username);
+    localStorage.setItem('username', result.user?.username || normalized.username);
     
     alert("Registrasi Organizer Berhasil!");
     navigate('/dashboard');
