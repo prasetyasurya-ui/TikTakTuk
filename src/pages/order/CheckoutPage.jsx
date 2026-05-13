@@ -300,16 +300,15 @@ const CheckoutPage = () => {
                           setBanner(null);
                           setSelectedCategoryId(cat.id);
                         }}
-                        className={`w-full text-left rounded-2xl border p-4 transition-all ${
-                          selected
+                        className={`w-full text-left rounded-2xl border p-4 transition-all ${selected
                             ? 'border-blue-400 bg-blue-50/30'
                             : 'border-slate-200 bg-white hover:border-slate-300'
-                        }`.trim()}
+                          }`.trim()}
                       >
                         <div className="flex items-start justify-between gap-3">
                           <div className="min-w-0">
                             <p className="text-sm font-black text-slate-900 truncate">{cat.name}</p>
-                            <p className="text-[11px] text-slate-500 font-medium mt-1">Kuota: {cat.quota} tiket</p>
+                            <p className="text-[11px] text-slate-500 font-medium mt-1">Sisa Kuota: {cat.remaining !== undefined ? cat.remaining : cat.quota} tiket</p>
                           </div>
                           <div className="flex items-center gap-3">
                             <p className="text-sm font-black text-slate-900">{formatIDR(cat.price)}</p>
@@ -369,13 +368,12 @@ const CheckoutPage = () => {
                             type="button"
                             disabled={disabled}
                             onClick={() => handleToggleSeat(seat.seatId)}
-                            className={`h-9 rounded-lg border text-[11px] font-black transition-all ${
-                              disabled
+                            className={`h-9 rounded-lg border text-[11px] font-black transition-all ${disabled
                                 ? 'bg-slate-50 border-slate-100 text-slate-300 cursor-not-allowed'
                                 : selected
-                                ? 'bg-blue-600 border-blue-600 text-white'
-                                : 'bg-white border-slate-200 text-slate-700 hover:bg-slate-50'
-                            }`.trim()}
+                                  ? 'bg-blue-600 border-blue-600 text-white'
+                                  : 'bg-white border-slate-200 text-slate-700 hover:bg-slate-50'
+                              }`.trim()}
                             aria-pressed={selected}
                           >
                             {seat.label}
@@ -418,9 +416,8 @@ const CheckoutPage = () => {
 
                 {promoMessage ? (
                   <p
-                    className={`mt-2 text-xs font-bold ${
-                      promoMessage.type === 'success' ? 'text-emerald-600' : 'text-rose-600'
-                    }`.trim()}
+                    className={`mt-2 text-xs font-bold ${promoMessage.type === 'success' ? 'text-emerald-600' : 'text-rose-600'
+                      }`.trim()}
                   >
                     {promoMessage.message}
                   </p>
@@ -429,11 +426,10 @@ const CheckoutPage = () => {
 
               {banner ? (
                 <div
-                  className={`rounded-2xl border px-4 py-3 text-sm font-bold ${
-                    banner.type === 'success'
+                  className={`rounded-2xl border px-4 py-3 text-sm font-bold ${banner.type === 'success'
                       ? 'bg-emerald-50 border-emerald-200 text-emerald-700'
                       : 'bg-rose-50 border-rose-200 text-rose-700'
-                  }`.trim()}
+                    }`.trim()}
                 >
                   {banner.message}
                 </div>
@@ -468,11 +464,10 @@ const CheckoutPage = () => {
                   type="button"
                   onClick={handleSubmit}
                   disabled={!canSubmit || isSubmitting}
-                  className={`w-full mt-5 py-3 rounded-xl text-sm font-black transition-all ${
-                    !canSubmit || isSubmitting
+                  className={`w-full mt-5 py-3 rounded-xl text-sm font-black transition-all ${!canSubmit || isSubmitting
                       ? 'bg-blue-200 text-white cursor-not-allowed'
                       : 'bg-blue-600 hover:bg-blue-700 text-white'
-                  }`.trim()}
+                    }`.trim()}
                 >
                   {isSubmitting ? 'Memproses...' : 'Bayar Sekarang'}
                 </button>

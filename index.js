@@ -18,6 +18,20 @@ app.use(express.json());
 const PORT = process.env.PORT || 3000;
 const JWT_SECRET = process.env.JWT_SECRET || 'change-me';
 
+// helper: format a Date or ISO string to YYYY-MM-DD
+function toDateString(value) {
+  if (!value) return '';
+  if (value instanceof Date) {
+    const y = value.getFullYear();
+    const m = String(value.getMonth() + 1).padStart(2, '0');
+    const d = String(value.getDate()).padStart(2, '0');
+    return `${y}-${m}-${d}`;
+  }
+  const str = String(value);
+  const match = str.match(/^(\d{4}-\d{2}-\d{2})/);
+  return match ? match[1] : str;
+}
+
 // helper: check if a column exists in a table (schema, table, column)
 async function columnExists(schema, table, column) {
   try {
@@ -285,12 +299,12 @@ app.get('/api/dashboard/admin', async (req, res) => {
     const events = await query('SELECT COUNT(*)::int AS total FROM TIKTAKTUK.EVENT');
     const venues = await query('SELECT COUNT(*)::int AS total FROM TIKTAKTUK.VENUE');
     const promos = await query('SELECT COUNT(*)::int AS total FROM TIKTAKTUK.PROMOTION');
-    
+
     // Get reserved seating venues count
     const reservedSeatingRes = await query(
       "SELECT COUNT(*)::int AS total FROM TIKTAKTUK.VENUE WHERE jenis_seating = 'RESERVED_SEATING'"
     );
-    
+
     // Get venue with largest capacity
     const largestVenueRes = await query(
       'SELECT venue_name FROM TIKTAKTUK.VENUE ORDER BY capacity DESC LIMIT 1'
@@ -916,6 +930,567 @@ app.put('/api/venues/:id', async (req, res) => {
     res.json({ venue: upd.rows[0] });
   } catch (err) {
     res.status(500).json({ error: err.message });
+  }
+});
+
+// ===================== TICKET QUOTA (Stored Procedure) =====================
+app.get('/api/events/:id/ticket-quota', async (req, res) => {
+  try {
+    const result = await query('SELECT * FROM TIKTAKTUK.get_ticket_quota($1)', [req.params.id]);
+    res.json({ categories: result.rows });
+  } catch (err) {
+    // Forward the stored procedure error message directly
+    const msg = err.message || '';
+    const match = msg.match(/ERROR:\s*(.*)/);
+    const errorMessage = match ? match[1].trim() : msg;
+    res.status(400).json({ error: errorMessage });
+  }
+});
+
+// ===================== CHECKOUT DATA =====================
+app.get('/api/checkout/:eventId', async (req, res) => {
+  try {
+    const eventId = req.params.eventId;
+
+    // Fetch event
+    const descriptionExists = await columnExists('TIKTAKTUK', 'EVENT', 'description');
+    const eventColumns = descriptionExists
+      ? 'event_id, event_title, event_datetime, venue_id, organizer_id, description'
+      : 'event_id, event_title, event_datetime, venue_id, organizer_id';
+    const eventRes = await query(`SELECT ${eventColumns} FROM TIKTAKTUK.EVENT WHERE event_id = $1`, [eventId]);
+    if (eventRes.rowCount === 0) return res.status(404).json({ error: 'Event tidak ditemukan.' });
+
+    const event = eventRes.rows[0];
+
+    // Fetch venue
+    const venueRes = await query('SELECT * FROM TIKTAKTUK.VENUE WHERE venue_id = $1', [event.venue_id]);
+    const venue = venueRes.rowCount > 0 ? venueRes.rows[0] : null;
+    const seatingType = (venue?.jenis_seating || 'FREE_SEATING').toUpperCase();
+
+    // Fetch ticket categories with remaining quota via stored procedure
+    let categories = [];
+    try {
+      const quotaRes = await query('SELECT * FROM TIKTAKTUK.get_ticket_quota($1)', [eventId]);
+      categories = quotaRes.rows.map(row => ({
+        id: row.category_id,
+        name: row.category_name,
+        quota: Number(row.quota),
+        sold: Number(row.sold),
+        remaining: Number(row.remaining),
+        price: Number(row.price),
+      }));
+    } catch (_err) {
+      // fallback: fetch categories without quota info
+      const catRes = await query('SELECT * FROM TIKTAKTUK.TICKET_CATEGORY WHERE tevent_id = $1 ORDER BY price', [eventId]);
+      categories = catRes.rows.map(row => ({
+        id: row.category_id,
+        name: row.category_name,
+        quota: Number(row.quota),
+        sold: 0,
+        remaining: Number(row.quota),
+        price: Number(row.price),
+      }));
+    }
+
+    // Fetch seats if reserved seating
+    let seats = [];
+    if (seatingType === 'RESERVED_SEATING') {
+      const seatRes = await query('SELECT * FROM TIKTAKTUK.SEAT WHERE venue_id = $1 ORDER BY seat_number', [event.venue_id]);
+      // Get used seat IDs
+      const usedRes = await query(
+        `SELECT hr.ticket_id, s.seat_id FROM TIKTAKTUK.HAS_RELATIONSHIP hr
+         JOIN TIKTAKTUK.SEAT s ON s.seat_id::text = hr.customer_id::text
+         WHERE s.venue_id = $1`,
+        [event.venue_id]
+      );
+      const usedSeatIds = new Set(usedRes.rows.map(r => r.seat_id));
+
+      seats = seatRes.rows.map(seat => ({
+        seatId: seat.seat_id,
+        label: seat.seat_number,
+        section: seat.zone,
+        seatNumber: seat.seat_number,
+        isAvailable: !usedSeatIds.has(seat.seat_id),
+      }));
+    }
+
+    res.json({
+      ok: true,
+      event: {
+        id: event.event_id,
+        title: event.event_title,
+        datetime: event.event_datetime,
+        venueId: event.venue_id,
+        venueName: venue?.venue_name || '-',
+        seatingType,
+      },
+      categories,
+      seats,
+    });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ===================== VALIDATE PROMO CODE =====================
+app.post('/api/orders/validate-promo', async (req, res) => {
+  try {
+    const { promoCode } = req.body;
+    if (!promoCode) return res.status(400).json({ error: 'Kode promo wajib diisi.' });
+
+    const code = promoCode.trim().toUpperCase();
+
+    const promoRes = await query('SELECT * FROM TIKTAKTUK.PROMOTION WHERE UPPER(promo_code) = $1', [code]);
+    if (promoRes.rowCount === 0) return res.status(400).json({ error: 'Kode promo tidak valid.' });
+
+    const promotion = promoRes.rows[0];
+
+    // Check date validity
+    const now = new Date();
+    const start = new Date(promotion.start_date);
+    const end = new Date(promotion.end_date);
+    end.setHours(23, 59, 59, 999);
+
+    if (now < start || now > end) {
+      return res.status(400).json({ error: 'Promo tidak berlaku pada tanggal ini.' });
+    }
+
+    // Check usage limit
+    const usageRes = await query(
+      'SELECT COUNT(*)::int AS used FROM TIKTAKTUK.ORDER_PROMOTION WHERE promotion_id = $1',
+      [promotion.promotion_id]
+    );
+    const usedCount = usageRes.rows[0]?.used || 0;
+    const remaining = Math.max(0, Number(promotion.usage_limit) - usedCount);
+
+    if (remaining <= 0) {
+      return res.status(400).json({ error: 'Kuota promo sudah habis.' });
+    }
+
+    res.json({
+      ok: true,
+      promotion: {
+        promotionId: promotion.promotion_id,
+        promoCode: promotion.promo_code,
+        discountType: promotion.discount_type,
+        discountValue: Number(promotion.discount_value),
+        startDate: toDateString(promotion.start_date),
+        endDate: toDateString(promotion.end_date),
+        usageLimit: Number(promotion.usage_limit),
+        usedCount,
+        remaining,
+      },
+    });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ===================== ORDER ENDPOINTS =====================
+// GET /api/orders - Fetch orders (role-filtered)
+app.get('/api/orders', async (req, res) => {
+  try {
+    const { userRole, userId } = req.query;
+    const role = String(userRole || '').toLowerCase();
+
+    let filterClause = '';
+    let filterParams = [];
+
+    if (role === 'customer') {
+      // Get customer_id from user_id
+      const custRes = await query('SELECT customer_id FROM TIKTAKTUK.CUSTOMER WHERE user_id = $1', [userId]);
+      if (custRes.rowCount === 0) return res.json({ orders: [] });
+      filterClause = 'WHERE o.customer_id = $1';
+      filterParams = [custRes.rows[0].customer_id];
+    } else if (role === 'organizer') {
+      const orgRes = await query('SELECT organizer_id FROM TIKTAKTUK.ORGANIZER WHERE user_id = $1', [userId]);
+      if (orgRes.rowCount === 0) return res.json({ orders: [] });
+      filterClause = `WHERE o.event_id IN (SELECT event_id FROM TIKTAKTUK.EVENT WHERE organizer_id = $1)`;
+      filterParams = [orgRes.rows[0].organizer_id];
+    }
+    // admin: no filter
+
+    const ordersRes = await query(
+      `SELECT o.order_id, o.order_date, o.payment_status, o.total_amount, o.customer_id, o.event_id,
+              c.full_name AS customer_name,
+              e.event_title
+       FROM TIKTAKTUK."ORDER" o
+       LEFT JOIN TIKTAKTUK.CUSTOMER c ON c.customer_id = o.customer_id
+       LEFT JOIN TIKTAKTUK.EVENT e ON e.event_id = o.event_id
+       ${filterClause}
+       ORDER BY o.order_date DESC`,
+      filterParams
+    );
+
+    const orders = ordersRes.rows.map(row => ({
+      id: row.order_id,
+      orderId: row.order_id,
+      orderDate: row.order_date,
+      paymentStatus: (row.payment_status || '').toUpperCase(),
+      totalAmount: Number(row.total_amount) || 0,
+      customerId: row.customer_id,
+      customerName: row.customer_name || '-',
+      eventTitle: row.event_title || '-',
+    }));
+
+    res.json({ orders });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// POST /api/orders - Create order
+app.post('/api/orders', async (req, res) => {
+  try {
+    const { eventId, categoryId, quantity, seatIds, promoCode, userId } = req.body;
+
+    if (!eventId) return res.status(400).json({ error: 'Event wajib dipilih.' });
+    if (!categoryId) return res.status(400).json({ error: 'Kategori tiket wajib dipilih.' });
+
+    const qty = Number(quantity);
+    if (!Number.isInteger(qty) || qty <= 0) {
+      return res.status(400).json({ error: 'Jumlah tiket wajib bilangan bulat positif.' });
+    }
+    if (qty > 10) {
+      return res.status(400).json({ error: 'Maksimal 10 tiket per transaksi.' });
+    }
+
+    // Verify customer
+    const custRes = await query('SELECT customer_id FROM TIKTAKTUK.CUSTOMER WHERE user_id = $1', [userId]);
+    if (custRes.rowCount === 0) {
+      return res.status(400).json({ error: 'Customer tidak ditemukan. Silakan login ulang.' });
+    }
+    const customerId = custRes.rows[0].customer_id;
+
+    // Verify event
+    const eventRes = await query('SELECT event_id FROM TIKTAKTUK.EVENT WHERE event_id = $1', [eventId]);
+    if (eventRes.rowCount === 0) {
+      return res.status(400).json({ error: 'Event tidak ditemukan.' });
+    }
+
+    // Verify category belongs to event
+    const catRes = await query(
+      'SELECT category_id, price, quota FROM TIKTAKTUK.TICKET_CATEGORY WHERE category_id = $1 AND tevent_id = $2',
+      [categoryId, eventId]
+    );
+    if (catRes.rowCount === 0) {
+      return res.status(400).json({ error: 'Kategori tiket tidak valid untuk event ini.' });
+    }
+
+    const category = catRes.rows[0];
+    const unitPrice = Number(category.price);
+
+    // Check quota using stored procedure
+    try {
+      const quotaRes = await query('SELECT * FROM TIKTAKTUK.get_ticket_quota($1)', [eventId]);
+      const catQuota = quotaRes.rows.find(r => r.category_id === categoryId);
+      if (catQuota && Number(catQuota.remaining) < qty) {
+        return res.status(400).json({ error: `Sisa kuota kategori "${catQuota.category_name}" tidak mencukupi (sisa: ${catQuota.remaining}).` });
+      }
+    } catch (quotaErr) {
+      const msg = quotaErr.message || '';
+      const match = msg.match(/ERROR:\s*(.*)/);
+      return res.status(400).json({ error: match ? match[1].trim() : msg });
+    }
+
+    // Calculate total
+    let subtotal = unitPrice * qty;
+    let promotionId = null;
+
+    // Validate and apply promo code
+    if (promoCode) {
+      const code = promoCode.trim().toUpperCase();
+      const promoRes = await query('SELECT * FROM TIKTAKTUK.PROMOTION WHERE UPPER(promo_code) = $1', [code]);
+      if (promoRes.rowCount === 0) {
+        return res.status(400).json({ error: 'Kode promo tidak valid.' });
+      }
+
+      const promotion = promoRes.rows[0];
+      const now = new Date();
+      const start = new Date(promotion.start_date);
+      const end = new Date(promotion.end_date);
+      end.setHours(23, 59, 59, 999);
+
+      if (now < start || now > end) {
+        return res.status(400).json({ error: 'Promo tidak berlaku pada tanggal ini.' });
+      }
+
+      const usageRes = await query(
+        'SELECT COUNT(*)::int AS used FROM TIKTAKTUK.ORDER_PROMOTION WHERE promotion_id = $1',
+        [promotion.promotion_id]
+      );
+      const usedCount = usageRes.rows[0]?.used || 0;
+      if (usedCount >= Number(promotion.usage_limit)) {
+        return res.status(400).json({ error: 'Kuota promo sudah habis.' });
+      }
+
+      // Calculate discount
+      const discType = promotion.discount_type.toUpperCase();
+      const discValue = Number(promotion.discount_value);
+      let discount = 0;
+      if (discType === 'PERCENTAGE') {
+        discount = (subtotal * discValue) / 100;
+      } else if (discType === 'NOMINAL') {
+        discount = discValue;
+      }
+      discount = Math.min(subtotal, Math.max(0, discount));
+      subtotal = Math.max(0, subtotal - discount);
+      promotionId = promotion.promotion_id;
+    }
+
+    // Create order
+    const orderRes = await query(
+      `INSERT INTO TIKTAKTUK."ORDER" (order_date, payment_status, total_amount, customer_id, event_id)
+       VALUES (NOW(), 'PENDING', $1, $2, $3)
+       RETURNING order_id`,
+      [subtotal, customerId, eventId]
+    );
+    const orderId = orderRes.rows[0].order_id;
+
+    // Create tickets
+    for (let i = 0; i < qty; i++) {
+      const ticketCode = `TKT-${Date.now()}-${Math.random().toString(36).substring(2, 8).toUpperCase()}`;
+      await query(
+        `INSERT INTO TIKTAKTUK.TICKET (ticket_code, status, issued_at, order_id, category_id)
+         VALUES ($1, 'ACTIVE', NOW(), $2, $3)`,
+        [ticketCode, orderId, categoryId]
+      );
+    }
+
+    // Link promo to order
+    if (promotionId) {
+      await query(
+        'INSERT INTO TIKTAKTUK.ORDER_PROMOTION (promotion_id, order_id) VALUES ($1, $2)',
+        [promotionId, orderId]
+      );
+    }
+
+    res.status(201).json({ ok: true, orderId });
+  } catch (err) {
+    // Forward trigger error messages
+    const msg = err.message || '';
+    const match = msg.match(/ERROR:\s*(.*)/);
+    const errorMessage = match ? match[1].trim() : msg;
+    res.status(400).json({ error: errorMessage });
+  }
+});
+
+// PUT /api/orders/:id - Update order payment status (Admin only)
+app.put('/api/orders/:id', async (req, res) => {
+  try {
+    const { paymentStatus } = req.body;
+    const validStatuses = ['PENDING', 'PAID', 'CANCELLED'];
+    const normalized = (paymentStatus || '').toUpperCase();
+
+    if (!validStatuses.includes(normalized)) {
+      return res.status(400).json({ error: 'Payment status tidak valid.' });
+    }
+
+    const existing = await query('SELECT order_id FROM TIKTAKTUK."ORDER" WHERE order_id = $1', [req.params.id]);
+    if (existing.rowCount === 0) {
+      return res.status(404).json({ error: 'Order tidak ditemukan.' });
+    }
+
+    await query('UPDATE TIKTAKTUK."ORDER" SET payment_status = $1 WHERE order_id = $2', [normalized, req.params.id]);
+    res.json({ ok: true, message: 'Order berhasil diperbarui.' });
+  } catch (err) {
+    const msg = err.message || '';
+    const match = msg.match(/ERROR:\s*(.*)/);
+    res.status(400).json({ error: match ? match[1].trim() : msg });
+  }
+});
+
+// DELETE /api/orders/:id - Delete order (Admin only)
+app.delete('/api/orders/:id', async (req, res) => {
+  try {
+    const existing = await query('SELECT order_id FROM TIKTAKTUK."ORDER" WHERE order_id = $1', [req.params.id]);
+    if (existing.rowCount === 0) {
+      return res.status(404).json({ error: 'Order tidak ditemukan.' });
+    }
+
+    await query('DELETE FROM TIKTAKTUK."ORDER" WHERE order_id = $1', [req.params.id]);
+    res.json({ ok: true, message: 'Order berhasil dihapus.' });
+  } catch (err) {
+    const msg = err.message || '';
+    const match = msg.match(/ERROR:\s*(.*)/);
+    res.status(400).json({ error: match ? match[1].trim() : msg });
+  }
+});
+
+// ===================== PROMOTION ENDPOINTS =====================
+// GET /api/promotions - Fetch all promotions
+app.get('/api/promotions', async (req, res) => {
+  try {
+    const promosRes = await query('SELECT * FROM TIKTAKTUK.PROMOTION ORDER BY promo_code');
+    const orderPromosRes = await query('SELECT promotion_id, COUNT(*)::int AS used FROM TIKTAKTUK.ORDER_PROMOTION GROUP BY promotion_id');
+    const usageMap = new Map(orderPromosRes.rows.map(r => [r.promotion_id, r.used]));
+
+    const promotions = promosRes.rows.map(p => {
+      const usageLimit = Number(p.usage_limit) || 0;
+      const usedCount = usageMap.get(p.promotion_id) || 0;
+      return {
+        promotionId: p.promotion_id,
+        promoCode: p.promo_code,
+        discountType: p.discount_type,
+        discountValue: Number(p.discount_value),
+        startDate: toDateString(p.start_date),
+        endDate: toDateString(p.end_date),
+        usageLimit,
+        usedCount,
+        remaining: Math.max(0, usageLimit - usedCount),
+      };
+    });
+
+    res.json({ promotions });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// POST /api/promotions - Create promotion (Admin only)
+app.post('/api/promotions', async (req, res) => {
+  try {
+    const { promoCode, discountType, discountValue, startDate, endDate, usageLimit } = req.body;
+
+    if (!promoCode) return res.status(400).json({ error: 'Kode promo wajib diisi.' });
+    if (!discountType) return res.status(400).json({ error: 'Tipe diskon wajib dipilih.' });
+
+    const discType = discountType.toUpperCase();
+    if (discType !== 'PERCENTAGE' && discType !== 'NOMINAL') {
+      return res.status(400).json({ error: 'Tipe diskon tidak valid.' });
+    }
+
+    const discVal = Number(discountValue);
+    if (!(discVal > 0)) {
+      return res.status(400).json({ error: 'Nilai diskon wajib berupa bilangan positif > 0.' });
+    }
+
+    if (!startDate) return res.status(400).json({ error: 'Tanggal mulai wajib diisi.' });
+    if (!endDate) return res.status(400).json({ error: 'Tanggal berakhir wajib diisi.' });
+
+    if (new Date(endDate) < new Date(startDate)) {
+      return res.status(400).json({ error: 'Tanggal berakhir harus sama atau setelah tanggal mulai.' });
+    }
+
+    const usageLim = Number(usageLimit);
+    if (!Number.isInteger(usageLim) || usageLim <= 0) {
+      return res.status(400).json({ error: 'Batas penggunaan wajib bilangan bulat positif > 0.' });
+    }
+
+    // Check unique promo code
+    const dupRes = await query('SELECT promotion_id FROM TIKTAKTUK.PROMOTION WHERE UPPER(promo_code) = UPPER($1)', [promoCode]);
+    if (dupRes.rowCount > 0) {
+      return res.status(400).json({ error: 'Kode promo sudah digunakan (harus unik).' });
+    }
+
+    const insertRes = await query(
+      `INSERT INTO TIKTAKTUK.PROMOTION (promo_code, discount_type, discount_value, start_date, end_date, usage_limit)
+       VALUES ($1, $2, $3, $4, $5, $6)
+       RETURNING *`,
+      [promoCode.toUpperCase(), discType, discVal, startDate, endDate, usageLim]
+    );
+
+    res.status(201).json({ ok: true, promotion: insertRes.rows[0] });
+  } catch (err) {
+    const msg = err.message || '';
+    const match = msg.match(/ERROR:\s*(.*)/);
+    res.status(400).json({ error: match ? match[1].trim() : msg });
+  }
+});
+
+// PUT /api/promotions/:id - Update promotion (Admin only)
+app.put('/api/promotions/:id', async (req, res) => {
+  try {
+    const { promoCode, discountType, discountValue, startDate, endDate, usageLimit } = req.body;
+
+    const existing = await query('SELECT promotion_id FROM TIKTAKTUK.PROMOTION WHERE promotion_id = $1', [req.params.id]);
+    if (existing.rowCount === 0) {
+      return res.status(404).json({ error: 'Promo tidak ditemukan.' });
+    }
+
+    if (!promoCode) return res.status(400).json({ error: 'Kode promo wajib diisi.' });
+    if (!discountType) return res.status(400).json({ error: 'Tipe diskon wajib dipilih.' });
+
+    const discType = discountType.toUpperCase();
+    if (discType !== 'PERCENTAGE' && discType !== 'NOMINAL') {
+      return res.status(400).json({ error: 'Tipe diskon tidak valid.' });
+    }
+
+    const discVal = Number(discountValue);
+    if (!(discVal > 0)) {
+      return res.status(400).json({ error: 'Nilai diskon wajib berupa bilangan positif > 0.' });
+    }
+
+    if (!startDate) return res.status(400).json({ error: 'Tanggal mulai wajib diisi.' });
+    if (!endDate) return res.status(400).json({ error: 'Tanggal berakhir wajib diisi.' });
+
+    if (new Date(endDate) < new Date(startDate)) {
+      return res.status(400).json({ error: 'Tanggal berakhir harus sama atau setelah tanggal mulai.' });
+    }
+
+    const usageLim = Number(usageLimit);
+    if (!Number.isInteger(usageLim) || usageLim <= 0) {
+      return res.status(400).json({ error: 'Batas penggunaan wajib bilangan bulat positif > 0.' });
+    }
+
+    // Check unique promo code (excluding self)
+    const dupRes = await query(
+      'SELECT promotion_id FROM TIKTAKTUK.PROMOTION WHERE UPPER(promo_code) = UPPER($1) AND promotion_id != $2',
+      [promoCode, req.params.id]
+    );
+    if (dupRes.rowCount > 0) {
+      return res.status(400).json({ error: 'Kode promo sudah digunakan (harus unik).' });
+    }
+
+    await query(
+      `UPDATE TIKTAKTUK.PROMOTION
+       SET promo_code = $1, discount_type = $2, discount_value = $3, start_date = $4, end_date = $5, usage_limit = $6
+       WHERE promotion_id = $7`,
+      [promoCode.toUpperCase(), discType, discVal, startDate, endDate, usageLim, req.params.id]
+    );
+
+    res.json({ ok: true, message: 'Promo berhasil diperbarui.' });
+  } catch (err) {
+    const msg = err.message || '';
+    const match = msg.match(/ERROR:\s*(.*)/);
+    res.status(400).json({ error: match ? match[1].trim() : msg });
+  }
+});
+
+// DELETE /api/promotions/:id - Delete promotion (Admin only)
+app.delete('/api/promotions/:id', async (req, res) => {
+  try {
+    const existing = await query('SELECT promotion_id FROM TIKTAKTUK.PROMOTION WHERE promotion_id = $1', [req.params.id]);
+    if (existing.rowCount === 0) {
+      return res.status(404).json({ error: 'Promo tidak ditemukan.' });
+    }
+
+    await query('DELETE FROM TIKTAKTUK.PROMOTION WHERE promotion_id = $1', [req.params.id]);
+    res.json({ ok: true, message: 'Promo berhasil dihapus.' });
+  } catch (err) {
+    const msg = err.message || '';
+    const match = msg.match(/ERROR:\s*(.*)/);
+    res.status(400).json({ error: match ? match[1].trim() : msg });
+  }
+});
+
+// ===================== EVENT ARTIST (with trigger validation) =====================
+app.post('/api/event-artists', async (req, res) => {
+  try {
+    const { event_id, artist_id, role } = req.body;
+    if (!event_id || !artist_id) return res.status(400).json({ error: 'Missing fields' });
+
+    await query(
+      'INSERT INTO TIKTAKTUK.EVENT_ARTIST (event_id, artist_id, role) VALUES ($1, $2, $3)',
+      [event_id, artist_id, role || 'Performer']
+    );
+    res.status(201).json({ ok: true, message: 'Artist berhasil ditambahkan ke event.' });
+  } catch (err) {
+    // Forward trigger error message directly
+    const msg = err.message || '';
+    const match = msg.match(/ERROR:\s*(.*)/);
+    const errorMessage = match ? match[1].trim() : msg;
+    res.status(400).json({ error: errorMessage });
   }
 });
 
