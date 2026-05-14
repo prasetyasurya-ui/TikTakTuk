@@ -487,9 +487,12 @@ export function getOrganizerDashboardData(userId) {
   const ownEventIds = new Set(ownEvents.map((event) => event.event_id));
   const ownCategories = db.ticket_category.filter((cat) => ownEventIds.has(cat.tevent_id));
   const ownCategoryIds = new Set(ownCategories.map((cat) => cat.category_id));
+  const paidOrderIds = new Set(
+    db.order.filter((order) => order.payment_status === 'PAID').map((order) => order.order_id)
+  );
 
   const soldTickets = db.ticket.filter(
-    (ticket) => ownCategoryIds.has(ticket.tcategory_id)
+    (ticket) => isPaidSoldTicket(ticket, paidOrderIds) && ownCategoryIds.has(ticket.tcategory_id)
   );
 
   const categoryMap = new Map(ownCategories.map((cat) => [cat.category_id, cat]));
@@ -561,9 +564,7 @@ export function getCustomerDashboardData(userId) {
   const eventMap = new Map(db.event.map((event) => [event.event_id, event]));
   const venueMap = new Map(db.venue.map((venue) => [venue.venue_id, venue]));
 
-  const soldTickets = db.ticket.filter(
-    (ticket) => ticket.status === 'sold' && paidOrderIds.has(ticket.torder_id)
-  );
+  const soldTickets = db.ticket.filter((ticket) => isPaidSoldTicket(ticket, paidOrderIds));
 
   const upcoming_tickets = soldTickets
     .map((ticket) => {
@@ -595,7 +596,10 @@ export function getCustomerDashboardData(userId) {
     .filter(Boolean)
     .sort((a, b) => a.sortTime - b.sortTime)
     .slice(0, 2)
-    .map(({ sortTime, ...rest }) => rest);
+    .map((ticket) => {
+      const { sortTime: _sortTime, ...rest } = ticket;
+      return rest;
+    });
 
   const joinedEventCount = new Set(
     soldTickets
@@ -617,6 +621,10 @@ export function getCustomerDashboardData(userId) {
     },
     upcoming_tickets,
   };
+}
+
+function isPaidSoldTicket(ticket, paidOrderIds) {
+  return paidOrderIds.has(ticket.torder_id) && (ticket.status ? ticket.status === 'sold' : true);
 }
 
 // --- Artist ---
