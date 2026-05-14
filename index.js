@@ -3,7 +3,7 @@ import dotenv from 'dotenv';
 import bcrypt from 'bcrypt';
 import jwt from 'jsonwebtoken';
 import cors from 'cors';
-import { query } from './server/db.js';
+import { query, poolInstance } from './server/db.js';
 
 dotenv.config();
 
@@ -96,7 +96,12 @@ async function resolveOrganizerId(inputId) {
 }
 
 function isUuidLike(value) {
-  return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(String(value || ''));
+  // Menambahkan pengecekan tipe data string agar lebih aman
+  if (typeof value !== 'string') return false;
+
+  // Versi diubah ke [1-7], variant tetap [89ab] sesuai RFC 4122
+  const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-7][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+  return uuidRegex.test(value);
 }
 
 async function syncEventArtists(eventId, artists) {
@@ -967,39 +972,42 @@ app.get('/api/checkout/:eventId', async (req, res) => {
     const venue = venueRes.rowCount > 0 ? venueRes.rows[0] : null;
     const seatingType = (venue?.jenis_seating || 'FREE_SEATING').toUpperCase();
 
-    // Fetch ticket categories with remaining quota via stored procedure
+    // Fetch ticket categories with remaining quota
+    // Detect FK column name in TICKET (could be category_id or tcategory_id)
     let categories = [];
-    try {
-      const quotaRes = await query('SELECT * FROM TIKTAKTUK.get_ticket_quota($1)', [eventId]);
-      categories = quotaRes.rows.map(row => ({
-        id: row.category_id,
-        name: row.category_name,
-        quota: Number(row.quota),
-        sold: Number(row.sold),
-        remaining: Number(row.remaining),
-        price: Number(row.price),
-      }));
-    } catch (_err) {
-      // fallback: fetch categories without quota info
-      const catRes = await query('SELECT * FROM TIKTAKTUK.TICKET_CATEGORY WHERE tevent_id = $1 ORDER BY price', [eventId]);
-      categories = catRes.rows.map(row => ({
-        id: row.category_id,
-        name: row.category_name,
-        quota: Number(row.quota),
-        sold: 0,
-        remaining: Number(row.quota),
-        price: Number(row.price),
-      }));
-    }
+    const hasCategoryId = await columnExists('TIKTAKTUK', 'TICKET', 'category_id');
+    const ticketFkCol = hasCategoryId ? 'category_id' : 'tcategory_id';
+
+    const catRes = await query(
+      `SELECT tc.category_id, tc.category_name, tc.quota, tc.price,
+              COALESCE(COUNT(t.ticket_id), 0)::int AS sold
+       FROM TIKTAKTUK.TICKET_CATEGORY tc
+       LEFT JOIN TIKTAKTUK.TICKET t ON t.${ticketFkCol} = tc.category_id
+       WHERE tc.tevent_id = $1
+       GROUP BY tc.category_id, tc.category_name, tc.quota, tc.price
+       ORDER BY tc.price`,
+      [eventId]
+    );
+    categories = catRes.rows.map(row => ({
+      id: row.category_id,
+      name: row.category_name,
+      quota: Number(row.quota),
+      sold: Number(row.sold),
+      remaining: Number(row.quota) - Number(row.sold),
+      price: Number(row.price),
+    }));
 
     // Fetch seats if reserved seating
     let seats = [];
     if (seatingType === 'RESERVED_SEATING') {
       const seatRes = await query('SELECT * FROM TIKTAKTUK.SEAT WHERE venue_id = $1 ORDER BY seat_number', [event.venue_id]);
       // Get used seat IDs
+      const hasSeatId = await columnExists('TIKTAKTUK', 'HAS_RELATIONSHIP', 'seat_id');
+      const hrSeatCol = hasSeatId ? 'seat_id' : 'customer_id';
+
       const usedRes = await query(
         `SELECT hr.ticket_id, s.seat_id FROM TIKTAKTUK.HAS_RELATIONSHIP hr
-         JOIN TIKTAKTUK.SEAT s ON s.seat_id::text = hr.customer_id::text
+         JOIN TIKTAKTUK.SEAT s ON s.seat_id::text = hr.${hrSeatCol}::text
          WHERE s.venue_id = $1`,
         [event.venue_id]
       );
@@ -1045,27 +1053,7 @@ app.post('/api/orders/validate-promo', async (req, res) => {
 
     const promotion = promoRes.rows[0];
 
-    // Check date validity
-    const now = new Date();
-    const start = new Date(promotion.start_date);
-    const end = new Date(promotion.end_date);
-    end.setHours(23, 59, 59, 999);
-
-    if (now < start || now > end) {
-      return res.status(400).json({ error: 'Promo tidak berlaku pada tanggal ini.' });
-    }
-
-    // Check usage limit
-    const usageRes = await query(
-      'SELECT COUNT(*)::int AS used FROM TIKTAKTUK.ORDER_PROMOTION WHERE promotion_id = $1',
-      [promotion.promotion_id]
-    );
-    const usedCount = usageRes.rows[0]?.used || 0;
-    const remaining = Math.max(0, Number(promotion.usage_limit) - usedCount);
-
-    if (remaining <= 0) {
-      return res.status(400).json({ error: 'Kuota promo sudah habis.' });
-    }
+    // This endpoint only checks if the code exists and returns its details for UI calculation.
 
     res.json({
       ok: true,
@@ -1077,8 +1065,6 @@ app.post('/api/orders/validate-promo', async (req, res) => {
         startDate: toDateString(promotion.start_date),
         endDate: toDateString(promotion.end_date),
         usageLimit: Number(promotion.usage_limit),
-        usedCount,
-        remaining,
       },
     });
   } catch (err) {
@@ -1110,13 +1096,28 @@ app.get('/api/orders', async (req, res) => {
     }
     // admin: no filter
 
+    const hasLowercaseOrder = await query(`
+      SELECT table_name FROM information_schema.tables 
+      WHERE table_schema = 'tiktaktuk' AND table_name = 'order'
+    `);
+    const orderTableName = hasLowercaseOrder.rowCount > 0 ? '"order"' : '"ORDER"';
+
+    const hasTktOrderId = await columnExists('TIKTAKTUK', 'TICKET', 'order_id');
+    const tktOrderCol = hasTktOrderId ? 'order_id' : 'torder_id';
+
+    const hasTktCatId = await columnExists('TIKTAKTUK', 'TICKET', 'category_id');
+    const tktCatCol = hasTktCatId ? 'category_id' : 'tcategory_id';
+
+    // We join with TICKET and TICKET_CATEGORY to get event_id, because lowercase "order" table doesn't have event_id
     const ordersRes = await query(
-      `SELECT o.order_id, o.order_date, o.payment_status, o.total_amount, o.customer_id, o.event_id,
+      `SELECT DISTINCT o.order_id, o.order_date, o.payment_status, o.total_amount, o.customer_id, tc.tevent_id AS event_id,
               c.full_name AS customer_name,
               e.event_title
-       FROM TIKTAKTUK."ORDER" o
+       FROM TIKTAKTUK.${orderTableName} o
        LEFT JOIN TIKTAKTUK.CUSTOMER c ON c.customer_id = o.customer_id
-       LEFT JOIN TIKTAKTUK.EVENT e ON e.event_id = o.event_id
+       LEFT JOIN TIKTAKTUK.TICKET t ON t.${tktOrderCol} = o.order_id
+       LEFT JOIN TIKTAKTUK.TICKET_CATEGORY tc ON tc.category_id = t.${tktCatCol}
+       LEFT JOIN TIKTAKTUK.EVENT e ON e.event_id = tc.tevent_id
        ${filterClause}
        ORDER BY o.order_date DESC`,
       filterParams
@@ -1141,137 +1142,161 @@ app.get('/api/orders', async (req, res) => {
 
 // POST /api/orders - Create order
 app.post('/api/orders', async (req, res) => {
+  // 1. Ambil koneksi dari pool di awal untuk transaksi
+  const client = await poolInstance.connect();
+
   try {
+    await client.query('BEGIN');
+
+    // 2. Destructuring input (Hanya sekali di awal)
+    // Catatan: userId diambil dari req.body atau req.user tergantung middleware Anda
     const { eventId, categoryId, quantity, seatIds, promoCode, userId } = req.body;
 
-    if (!eventId) return res.status(400).json({ error: 'Event wajib dipilih.' });
-    if (!categoryId) return res.status(400).json({ error: 'Kategori tiket wajib dipilih.' });
+    // 3. Validasi Dasar Input
+    if (!eventId || !categoryId) {
+      throw new Error('Event dan Kategori tiket wajib dipilih.');
+    }
 
     const qty = Number(quantity);
     if (!Number.isInteger(qty) || qty <= 0) {
-      return res.status(400).json({ error: 'Jumlah tiket wajib bilangan bulat positif.' });
+      throw new Error('Jumlah tiket wajib bilangan bulat positif.');
     }
     if (qty > 10) {
-      return res.status(400).json({ error: 'Maksimal 10 tiket per transaksi.' });
+      throw new Error('Maksimal 10 tiket per transaksi.');
     }
 
-    // Verify customer
-    const custRes = await query('SELECT customer_id FROM TIKTAKTUK.CUSTOMER WHERE user_id = $1', [userId]);
-    if (custRes.rowCount === 0) {
-      return res.status(400).json({ error: 'Customer tidak ditemukan. Silakan login ulang.' });
+    // 4. Verifikasi Customer
+    const customerRes = await client.query(
+      'SELECT customer_id FROM TIKTAKTUK.CUSTOMER WHERE user_id = $1',
+      [userId]
+    );
+    if (customerRes.rowCount === 0) {
+      throw new Error('Customer tidak ditemukan. Silakan login ulang.');
     }
-    const customerId = custRes.rows[0].customer_id;
+    const customerId = customerRes.rows[0].customer_id;
 
-    // Verify event
-    const eventRes = await query('SELECT event_id FROM TIKTAKTUK.EVENT WHERE event_id = $1', [eventId]);
-    if (eventRes.rowCount === 0) {
-      return res.status(400).json({ error: 'Event tidak ditemukan.' });
-    }
-
-    // Verify category belongs to event
-    const catRes = await query(
-      'SELECT category_id, price, quota FROM TIKTAKTUK.TICKET_CATEGORY WHERE category_id = $1 AND tevent_id = $2',
+    // 5. Verifikasi Kategori & Ambil Harga
+    const catRes = await client.query(
+      'SELECT category_id, category_name, price, quota FROM TIKTAKTUK.TICKET_CATEGORY WHERE category_id = $1 AND tevent_id = $2',
       [categoryId, eventId]
     );
     if (catRes.rowCount === 0) {
-      return res.status(400).json({ error: 'Kategori tiket tidak valid untuk event ini.' });
+      throw new Error('Kategori tiket tidak valid untuk event ini.');
+    }
+    const { price: unitPrice, quota, category_name } = catRes.rows[0];
+
+    // 6. Validasi Kuota (Menggunakan Join untuk menghitung tiket terjual)
+    const hasCategoryCol = await columnExists('TIKTAKTUK', 'TICKET', 'category_id');
+    const tktFkCol = hasCategoryCol ? 'category_id' : 'tcategory_id';
+
+    const soldRes = await client.query(
+      `SELECT COUNT(*) AS sold FROM TIKTAKTUK.TICKET WHERE ${tktFkCol} = $1`,
+      [categoryId]
+    );
+    const remaining = Number(quota) - Number(soldRes.rows[0].sold);
+    if (remaining < qty) {
+      throw new Error(`Sisa kuota kategori "${category_name}" tidak mencukupi (sisa: ${remaining}).`);
     }
 
-    const category = catRes.rows[0];
-    const unitPrice = Number(category.price);
-
-    // Check quota using stored procedure
-    try {
-      const quotaRes = await query('SELECT * FROM TIKTAKTUK.get_ticket_quota($1)', [eventId]);
-      const catQuota = quotaRes.rows.find(r => r.category_id === categoryId);
-      if (catQuota && Number(catQuota.remaining) < qty) {
-        return res.status(400).json({ error: `Sisa kuota kategori "${catQuota.category_name}" tidak mencukupi (sisa: ${catQuota.remaining}).` });
-      }
-    } catch (quotaErr) {
-      const msg = quotaErr.message || '';
-      const match = msg.match(/ERROR:\s*(.*)/);
-      return res.status(400).json({ error: match ? match[1].trim() : msg });
-    }
-
-    // Calculate total
-    let subtotal = unitPrice * qty;
+    // 7. Perhitungan Harga & Promo
+    let subtotal = Number(unitPrice) * qty;
     let promotionId = null;
 
-    // Validate and apply promo code
     if (promoCode) {
       const code = promoCode.trim().toUpperCase();
-      const promoRes = await query('SELECT * FROM TIKTAKTUK.PROMOTION WHERE UPPER(promo_code) = $1', [code]);
-      if (promoRes.rowCount === 0) {
-        return res.status(400).json({ error: 'Kode promo tidak valid.' });
-      }
-
-      const promotion = promoRes.rows[0];
-      const now = new Date();
-      const start = new Date(promotion.start_date);
-      const end = new Date(promotion.end_date);
-      end.setHours(23, 59, 59, 999);
-
-      if (now < start || now > end) {
-        return res.status(400).json({ error: 'Promo tidak berlaku pada tanggal ini.' });
-      }
-
-      const usageRes = await query(
-        'SELECT COUNT(*)::int AS used FROM TIKTAKTUK.ORDER_PROMOTION WHERE promotion_id = $1',
-        [promotion.promotion_id]
+      const promoRes = await client.query(
+        'SELECT * FROM TIKTAKTUK.PROMOTION WHERE UPPER(promo_code) = $1',
+        [code]
       );
-      const usedCount = usageRes.rows[0]?.used || 0;
-      if (usedCount >= Number(promotion.usage_limit)) {
-        return res.status(400).json({ error: 'Kuota promo sudah habis.' });
-      }
 
-      // Calculate discount
-      const discType = promotion.discount_type.toUpperCase();
-      const discValue = Number(promotion.discount_value);
-      let discount = 0;
-      if (discType === 'PERCENTAGE') {
-        discount = (subtotal * discValue) / 100;
-      } else if (discType === 'NOMINAL') {
-        discount = discValue;
+      if (promoRes.rowCount === 0) {
+        // Memicu DB exception dengan dummy UUID jika promo tidak valid
+        promotionId = '00000000-0000-0000-0000-000000000000';
+      } else {
+        const promotion = promoRes.rows[0];
+        promotionId = promotion.promotion_id;
+        const discValue = Number(promotion.discount_value);
+
+        let discount = 0;
+        if (promotion.discount_type.toUpperCase() === 'PERCENTAGE') {
+          discount = (subtotal * discValue) / 100;
+        } else {
+          discount = discValue;
+        }
+        subtotal = Math.max(0, subtotal - discount);
       }
-      discount = Math.min(subtotal, Math.max(0, discount));
-      subtotal = Math.max(0, subtotal - discount);
-      promotionId = promotion.promotion_id;
     }
 
-    // Create order
-    const orderRes = await query(
-      `INSERT INTO TIKTAKTUK."ORDER" (order_date, payment_status, total_amount, customer_id, event_id)
-       VALUES (NOW(), 'PENDING', $1, $2, $3)
-       RETURNING order_id`,
-      [subtotal, customerId, eventId]
-    );
+    // 8. Penentuan Nama Tabel Order (Case Sensitivity)
+    const hasLowercaseOrder = await client.query(`
+      SELECT table_name FROM information_schema.tables 
+      WHERE table_schema = 'tiktaktuk' AND table_name = 'order'
+    `);
+    const orderTableName = hasLowercaseOrder.rowCount > 0 ? '"order"' : '"ORDER"';
+    const hasEventIdInOrder = await columnExists('TIKTAKTUK', orderTableName.replace(/"/g, ''), 'event_id');
+
+    // 9. Insert ke Tabel Order
+    let orderRes;
+    if (hasEventIdInOrder) {
+      orderRes = await client.query(
+        `INSERT INTO TIKTAKTUK.${orderTableName} (order_date, payment_status, total_amount, customer_id, event_id)
+         VALUES (NOW(), 'PENDING', $1, $2, $3) RETURNING order_id`,
+        [subtotal, customerId, eventId]
+      );
+    } else {
+      orderRes = await client.query(
+        `INSERT INTO TIKTAKTUK.${orderTableName} (order_date, payment_status, total_amount, customer_id)
+         VALUES (NOW(), 'PENDING', $1, $2) RETURNING order_id`,
+        [subtotal, customerId]
+      );
+    }
     const orderId = orderRes.rows[0].order_id;
 
-    // Create tickets
+    // 10. Generate Tiket
+    const hasStatusCol = await columnExists('TIKTAKTUK', 'TICKET', 'status');
+    const hasOrderIdCol = await columnExists('TIKTAKTUK', 'TICKET', 'order_id');
+    const tktOrderCol = hasOrderIdCol ? 'order_id' : 'torder_id';
+
     for (let i = 0; i < qty; i++) {
       const ticketCode = `TKT-${Date.now()}-${Math.random().toString(36).substring(2, 8).toUpperCase()}`;
-      await query(
-        `INSERT INTO TIKTAKTUK.TICKET (ticket_code, status, issued_at, order_id, category_id)
-         VALUES ($1, 'ACTIVE', NOW(), $2, $3)`,
-        [ticketCode, orderId, categoryId]
-      );
+      if (hasStatusCol) {
+        await client.query(
+          `INSERT INTO TIKTAKTUK.TICKET (ticket_code, status, issued_at, ${tktOrderCol}, ${tktFkCol})
+           VALUES ($1, 'ACTIVE', NOW(), $2, $3)`,
+          [ticketCode, orderId, categoryId]
+        );
+      } else {
+        await client.query(
+          `INSERT INTO TIKTAKTUK.TICKET (ticket_code, ${tktOrderCol}, ${tktFkCol})
+           VALUES ($1, $2, $3)`,
+          [ticketCode, orderId, categoryId]
+        );
+      }
     }
 
-    // Link promo to order
+    // 11. Link Promo ke Order
     if (promotionId) {
-      await query(
+      await client.query(
         'INSERT INTO TIKTAKTUK.ORDER_PROMOTION (promotion_id, order_id) VALUES ($1, $2)',
         [promotionId, orderId]
       );
     }
 
+    await client.query('COMMIT');
     res.status(201).json({ ok: true, orderId });
+
   } catch (err) {
-    // Forward trigger error messages
+    await client.query('ROLLBACK');
+    console.error("Order Error:", err.message);
+
+    // Formatting error message dari trigger database
     const msg = err.message || '';
-    const match = msg.match(/ERROR:\s*(.*)/);
+    const match = msg.match(/(ERROR:\s*.*)/);
     const errorMessage = match ? match[1].trim() : msg;
+
     res.status(400).json({ error: errorMessage });
+  } finally {
+    client.release();
   }
 });
 
@@ -1286,12 +1311,18 @@ app.put('/api/orders/:id', async (req, res) => {
       return res.status(400).json({ error: 'Payment status tidak valid.' });
     }
 
-    const existing = await query('SELECT order_id FROM TIKTAKTUK."ORDER" WHERE order_id = $1', [req.params.id]);
+    const hasLowercaseOrder = await query(`
+      SELECT table_name FROM information_schema.tables 
+      WHERE table_schema = 'tiktaktuk' AND table_name = 'order'
+    `);
+    const orderTableName = hasLowercaseOrder.rowCount > 0 ? '"order"' : '"ORDER"';
+
+    const existing = await query(`SELECT order_id FROM TIKTAKTUK.${orderTableName} WHERE order_id = $1`, [req.params.id]);
     if (existing.rowCount === 0) {
       return res.status(404).json({ error: 'Order tidak ditemukan.' });
     }
 
-    await query('UPDATE TIKTAKTUK."ORDER" SET payment_status = $1 WHERE order_id = $2', [normalized, req.params.id]);
+    await query(`UPDATE TIKTAKTUK.${orderTableName} SET payment_status = $1 WHERE order_id = $2`, [normalized, req.params.id]);
     res.json({ ok: true, message: 'Order berhasil diperbarui.' });
   } catch (err) {
     const msg = err.message || '';
@@ -1302,18 +1333,55 @@ app.put('/api/orders/:id', async (req, res) => {
 
 // DELETE /api/orders/:id - Delete order (Admin only)
 app.delete('/api/orders/:id', async (req, res) => {
+  const client = await poolInstance.connect();
   try {
-    const existing = await query('SELECT order_id FROM TIKTAKTUK."ORDER" WHERE order_id = $1', [req.params.id]);
+    await client.query('BEGIN');
+
+    const hasLowercaseOrder = await client.query(`
+      SELECT table_name FROM information_schema.tables 
+      WHERE table_schema = 'tiktaktuk' AND table_name = 'order'
+    `);
+    const orderTableName = hasLowercaseOrder.rowCount > 0 ? '"order"' : '"ORDER"';
+
+    const existing = await client.query(`SELECT order_id FROM TIKTAKTUK.${orderTableName} WHERE order_id = $1`, [req.params.id]);
     if (existing.rowCount === 0) {
+      await client.query('ROLLBACK');
       return res.status(404).json({ error: 'Order tidak ditemukan.' });
     }
 
-    await query('DELETE FROM TIKTAKTUK."ORDER" WHERE order_id = $1', [req.params.id]);
-    res.json({ ok: true, message: 'Order berhasil dihapus.' });
+    // Determine correct ticket order column
+    const hasTktOrderId = await columnExists('TIKTAKTUK', 'TICKET', 'order_id');
+    const tktOrderCol = hasTktOrderId ? 'order_id' : 'torder_id';
+
+    // 1. Find all ticket IDs for this order
+    const ticketsRes = await client.query(`SELECT ticket_id FROM TIKTAKTUK.TICKET WHERE ${tktOrderCol} = $1`, [req.params.id]);
+    const ticketIds = ticketsRes.rows.map(r => r.ticket_id);
+
+    // 2. Delete from HAS_RELATIONSHIP for these tickets
+    if (ticketIds.length > 0) {
+      // Create parameterized list $1, $2, etc.
+      const paramList = ticketIds.map((_, i) => `$${i + 1}`).join(', ');
+      await client.query(`DELETE FROM TIKTAKTUK.HAS_RELATIONSHIP WHERE ticket_id IN (${paramList})`, ticketIds);
+    }
+
+    // 3. Delete from TICKET
+    await client.query(`DELETE FROM TIKTAKTUK.TICKET WHERE ${tktOrderCol} = $1`, [req.params.id]);
+
+    // 4. Delete from ORDER_PROMOTION
+    await client.query(`DELETE FROM TIKTAKTUK.ORDER_PROMOTION WHERE order_id = $1`, [req.params.id]);
+
+    // 5. Finally, delete the ORDER itself
+    await client.query(`DELETE FROM TIKTAKTUK.${orderTableName} WHERE order_id = $1`, [req.params.id]);
+
+    await client.query('COMMIT');
+    res.json({ ok: true, message: 'Order berhasil dihapus beserta seluruh data terkait.' });
   } catch (err) {
+    await client.query('ROLLBACK');
     const msg = err.message || '';
     const match = msg.match(/ERROR:\s*(.*)/);
     res.status(400).json({ error: match ? match[1].trim() : msg });
+  } finally {
+    client.release();
   }
 });
 

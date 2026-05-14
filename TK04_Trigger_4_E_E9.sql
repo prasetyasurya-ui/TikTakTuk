@@ -38,6 +38,7 @@ BEGIN
 END;
 $$ LANGUAGE plpgsql;
 
+DROP TRIGGER IF EXISTS trigger_validate_order_promotion_usage ON TIKTAKTUK.ORDER_PROMOTION;
 CREATE TRIGGER trigger_validate_order_promotion_usage
 BEFORE INSERT ON TIKTAKTUK.ORDER_PROMOTION
 FOR EACH ROW
@@ -64,10 +65,17 @@ BEGIN
     FROM TIKTAKTUK.PROMOTION
     WHERE promotion_id = NEW.promotion_id;
 
-    -- 2. Ambil event_id dari ORDER, lalu event_datetime dari EVENT
-    SELECT o.event_id INTO v_event_id
-    FROM TIKTAKTUK."ORDER" o
-    WHERE o.order_id = NEW.order_id;
+    -- 2. Ambil event_id dari TICKET dan TICKET_CATEGORY secara dinamis
+    BEGIN
+        EXECUTE 'SELECT tc.tevent_id FROM TIKTAKTUK.TICKET t JOIN TIKTAKTUK.TICKET_CATEGORY tc ON t.tcategory_id = tc.category_id WHERE t.torder_id = $1 LIMIT 1'
+        INTO v_event_id
+        USING NEW.order_id;
+    EXCEPTION WHEN undefined_column THEN
+        -- Fallback ke skema lokal (order_id, category_id)
+        EXECUTE 'SELECT tc.tevent_id FROM TIKTAKTUK.TICKET t JOIN TIKTAKTUK.TICKET_CATEGORY tc ON t.category_id = tc.category_id WHERE t.order_id = $1 LIMIT 1'
+        INTO v_event_id
+        USING NEW.order_id;
+    END;
 
     SELECT e.event_datetime::DATE INTO v_event_date
     FROM TIKTAKTUK.EVENT e
@@ -82,6 +90,7 @@ BEGIN
 END;
 $$ LANGUAGE plpgsql;
 
+DROP TRIGGER IF EXISTS trigger_validate_order_promotion_date ON TIKTAKTUK.ORDER_PROMOTION;
 CREATE TRIGGER trigger_validate_order_promotion_date
 BEFORE INSERT ON TIKTAKTUK.ORDER_PROMOTION
 FOR EACH ROW

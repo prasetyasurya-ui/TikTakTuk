@@ -220,7 +220,7 @@ const CheckoutPage = () => {
         categoryId: selectedCategoryId,
         quantity,
         seatIds: selectedSeatIds,
-        promoCode: appliedPromo?.promoCode || '',
+        promoCode: promoInput.trim() || appliedPromo?.promoCode || '',
       },
       { userRole, userId }
     );
