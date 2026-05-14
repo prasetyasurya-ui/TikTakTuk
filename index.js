@@ -919,4 +919,139 @@ app.put('/api/venues/:id', async (req, res) => {
   }
 });
 
+// ─── JWT Auth Middleware ─────────────────────────────────────────────────────
+function authenticateToken(req, res, next) {
+  const authHeader = req.headers['authorization'];
+  const token = authHeader && authHeader.split(' ')[1]; // Bearer <token>
+
+  if (!token) {
+    return res.status(401).json({ ok: false, message: 'Akses ditolak. Silakan login terlebih dahulu.' });
+  }
+
+  try {
+    const decoded = jwt.verify(token, JWT_SECRET);
+    req.user = decoded; // { user_id, username, roles }
+    next();
+  } catch (err) {
+    return res.status(401).json({ ok: false, message: 'Token tidak valid atau sudah kedaluwarsa.' });
+  }
+}
+
+function requireAdmin(req, res, next) {
+  const roles = (req.user.roles || []).map(r => r.toLowerCase());
+  if (!roles.includes('admin')) {
+    return res.status(403).json({ ok: false, message: 'Hanya Admin yang dapat melakukan aksi ini.' });
+  }
+  next();
+}
+
+// ─── ARTIST endpoints ────────────────────────────────────────────────────────
+
+// READ — all logged-in users (Admin, Organizer, Customer) can view artist list
+app.get('/api/artists', authenticateToken, async (req, res) => {
+  try {
+    const eventArtistExists = await tableExists('TIKTAKTUK', 'EVENT_ARTIST');
+
+    const result = eventArtistExists
+      ? await query(`
+          SELECT a.artist_id, a.name, a.genre,
+                 COUNT(ea.event_id)::int AS event_count
+          FROM TIKTAKTUK.ARTIST a
+          LEFT JOIN TIKTAKTUK.EVENT_ARTIST ea ON ea.artist_id = a.artist_id
+          GROUP BY a.artist_id, a.name, a.genre
+          ORDER BY a.name ASC
+        `)
+      : await query(`
+          SELECT artist_id, name, genre, 0 AS event_count
+          FROM TIKTAKTUK.ARTIST
+          ORDER BY name ASC
+        `);
+
+    res.json({ ok: true, data: result.rows });
+  } catch (err) {
+    res.status(500).json({ ok: false, message: err.message });
+  }
+});
+
+// CREATE — Admin only
+app.post('/api/artists', authenticateToken, requireAdmin, async (req, res) => {
+  const payload = req.body.data || req.body;
+  const name = (payload.name || '').trim();
+  const genre = (payload.genre || '').trim() || null;
+
+  if (!name) {
+    return res.status(400).json({ ok: false, message: 'Nama artist wajib diisi.' });
+  }
+
+  if (name.length > 100) {
+    return res.status(400).json({ ok: false, message: 'Nama artist maksimal 100 karakter.' });
+  }
+
+  if (genre && genre.length > 50) {
+    return res.status(400).json({ ok: false, message: 'Genre maksimal 50 karakter.' });
+  }
+
+  try {
+    const ins = await query(
+      'INSERT INTO TIKTAKTUK.ARTIST (name, genre) VALUES ($1, $2) RETURNING artist_id, name, genre',
+      [name, genre]
+    );
+    res.status(201).json({ ok: true, data: ins.rows[0], message: 'Artis berhasil ditambahkan.' });
+  } catch (err) {
+    res.status(500).json({ ok: false, message: err.message });
+  }
+});
+
+// UPDATE — Admin only
+app.put('/api/artists/:id', authenticateToken, requireAdmin, async (req, res) => {
+  const { id } = req.params;
+  const payload = req.body.data || req.body;
+  const name = (payload.name || '').trim();
+  const genre = (payload.genre || '').trim() || null;
+
+  if (!name) {
+    return res.status(400).json({ ok: false, message: 'Nama artist wajib diisi.' });
+  }
+
+  if (name.length > 100) {
+    return res.status(400).json({ ok: false, message: 'Nama artist maksimal 100 karakter.' });
+  }
+
+  if (genre && genre.length > 50) {
+    return res.status(400).json({ ok: false, message: 'Genre maksimal 50 karakter.' });
+  }
+
+  try {
+    const existing = await query('SELECT artist_id FROM TIKTAKTUK.ARTIST WHERE artist_id = $1', [id]);
+    if (existing.rowCount === 0) {
+      return res.status(404).json({ ok: false, message: 'Artis tidak ditemukan.' });
+    }
+
+    const upd = await query(
+      'UPDATE TIKTAKTUK.ARTIST SET name = $1, genre = $2 WHERE artist_id = $3 RETURNING artist_id, name, genre',
+      [name, genre, id]
+    );
+    res.json({ ok: true, data: upd.rows[0], message: 'Artis berhasil diperbarui.' });
+  } catch (err) {
+    res.status(500).json({ ok: false, message: err.message });
+  }
+});
+
+// DELETE — Admin only
+app.delete('/api/artists/:id', authenticateToken, requireAdmin, async (req, res) => {
+  const { id } = req.params;
+
+  try {
+    const existing = await query('SELECT artist_id, name FROM TIKTAKTUK.ARTIST WHERE artist_id = $1', [id]);
+    if (existing.rowCount === 0) {
+      return res.status(404).json({ ok: false, message: 'Artis tidak ditemukan.' });
+    }
+
+    await query('DELETE FROM TIKTAKTUK.ARTIST WHERE artist_id = $1', [id]);
+    res.json({ ok: true, message: `Artis "${existing.rows[0].name}" berhasil dihapus.` });
+  } catch (err) {
+    res.status(500).json({ ok: false, message: err.message });
+  }
+});
+
 app.listen(PORT, () => console.log(`Server TikTakTuk berjalan di port ${PORT}`));
