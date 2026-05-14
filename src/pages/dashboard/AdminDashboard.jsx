@@ -4,9 +4,11 @@ import Navbar from '../../components/Navbar';
 import { fetchAdminDashboard } from '../../services/api';
 import PanelCard from '../../components/ui/PanelCard';
 import StatCard from '../../components/ui/StatCard';
+import { useAuth } from '../../contexts/AuthContext';
 
 const AdminDashboard = () => {
   const navigate = useNavigate();
+  const { session } = useAuth();
   const [isLoading, setIsLoading] = useState(true); // Tambahan state loading
   const [adminStats, setAdminStats] = useState({
     platform: {
@@ -26,6 +28,14 @@ const AdminDashboard = () => {
       total_penggunaan: '0 kali',
     },
   });
+
+  useEffect(() => {
+    // Check if user is authenticated
+    if (!session.isLoggedIn || !session.userId) {
+      navigate('/login', { replace: true });
+      return;
+    }
+  }, [session.isLoggedIn, session.userId, navigate]);
 
   useEffect(() => {
     const loadAdminDashboard = async () => {

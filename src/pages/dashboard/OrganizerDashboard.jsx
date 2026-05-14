@@ -1,4 +1,5 @@
 import React, { useEffect, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import Navbar from '../../components/Navbar';
 import { fetchOrganizerDashboard } from '../../services/api';
 import PanelCard from '../../components/ui/PanelCard';
@@ -6,8 +7,10 @@ import StatCard from '../../components/ui/StatCard';
 import { useAuth } from '../../contexts/AuthContext';
 
 const OrganizerDashboard = () => {
+  const navigate = useNavigate();
   const { session } = useAuth();
   const [isLoading, setIsLoading] = useState(true); // Tambahan state loading
+  const [error, setError] = useState(null);
   const [organizerStats, setOrganizerStats] = useState({
     ringkasan: {
       acara_aktif: 0,
@@ -19,11 +22,30 @@ const OrganizerDashboard = () => {
   });
 
   useEffect(() => {
+    // Check if user is authenticated
+    if (!session.isLoggedIn || !session.userId) {
+      navigate('/login', { replace: true });
+      return;
+    }
+  }, [session.isLoggedIn, session.userId, navigate]);
+
+  useEffect(() => {
     const loadOrganizerDashboard = async () => {
-      setIsLoading(true); // Set loading ke true saat mulai fetch
-      const data = await fetchOrganizerDashboard(session.userId);
-      setOrganizerStats(data);
-      setIsLoading(false); // Set loading ke false setelah data diterima
+      if (!session.userId) {
+        setIsLoading(false);
+        setError('User tidak terautentikasi');
+        return;
+      }
+      setIsLoading(true);
+      setError(null);
+      try {
+        const data = await fetchOrganizerDashboard(session.userId);
+        setOrganizerStats(data);
+      } catch (err) {
+        setError('Gagal memuat dashboard: ' + err.message);
+      } finally {
+        setIsLoading(false);
+      }
     };
 
     loadOrganizerDashboard();
@@ -48,6 +70,13 @@ const OrganizerDashboard = () => {
             </button>
           </div>
         </header>
+
+        {/* Error Display */}
+        {error && (
+          <div className="mb-6 p-4 bg-red-50 border border-red-200 rounded-lg text-red-700">
+            {error}
+          </div>
+        )}
 
         {/* Statistik Utama & Skeleton */}
         {isLoading ? (
