@@ -5,10 +5,7 @@ function getAuthHeaders() {
   return token ? { Authorization: `Bearer ${token}` } : {};
 }
 
-/**
- * Fetch all seats + venues for the Seat Management page.
- * Returns { seats: [...], venues: [...] }
- */
+// READ : fetch all seats
 export async function fetchSeatsManagementData() {
   try {
     const response = await apiClient.get('/seats', { headers: getAuthHeaders() });
@@ -28,10 +25,7 @@ export async function fetchSeatsManagementData() {
   }
 }
 
-/**
- * Create a new seat.
- * @param {{ venueId: string, section: string, rowNumber: string, seatNumber: string }} payload
- */
+// CREATE : create new seats
 export async function createSeat(payload) {
   try {
     const response = await apiClient.post('/seats', {
@@ -53,11 +47,7 @@ export async function createSeat(payload) {
   }
 }
 
-/**
- * Update an existing seat.
- * @param {string} seatId
- * @param {{ venueId: string, section: string, rowNumber: string, seatNumber: string }} payload
- */
+// UPDATE : update seat info
 export async function updateSeat(seatId, payload) {
   try {
     const response = await apiClient.put(`/seats/${seatId}`, {
@@ -79,10 +69,7 @@ export async function updateSeat(seatId, payload) {
   }
 }
 
-/**
- * Delete a seat. Trigger 5.1 will block if seat is assigned to a ticket.
- * @param {string} seatId
- */
+// DELETE : delete seat 
 export async function deleteSeat(seatId) {
   try {
     const response = await apiClient.delete(`/seats/${seatId}`, { headers: getAuthHeaders() });
