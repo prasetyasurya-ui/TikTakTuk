@@ -12,4 +12,5 @@ const pool = new Pool({
   ssl: useSsl ? { rejectUnauthorized: false } : false
 });
 
+export const poolInstance = pool;
 export const query = (text, params) => pool.query(text, params);
