@@ -1,4 +1,5 @@
 import React, { useEffect, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import Navbar from '../../components/Navbar';
 import { fetchCustomerDashboard } from '../../services/api';
 import { useAuth } from '../../contexts/AuthContext';
@@ -15,7 +16,16 @@ const FALLBACK_CUSTOMER = {
 };
 
 const CustomerDashboard = () => {
+  const navigate = useNavigate();
   const { session } = useAuth();
+
+  useEffect(() => {
+    // Check if user is authenticated
+    if (!session.isLoggedIn || !session.userId) {
+      navigate('/login', { replace: true });
+      return;
+    }
+  }, [session.isLoggedIn, session.userId, navigate]);
 
   const [customer, setCustomer] = useState({
     nama: 'User',
