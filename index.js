@@ -1,6 +1,7 @@
 import express from 'express';
 import dotenv from 'dotenv';
 import cors from 'cors';
+import jwt from 'jsonwebtoken';
 import { query } from './server/db.js';
 import authRouter from './routes/auth.js';
 import dashboardRouter from './routes/dashboard.js';
@@ -50,6 +51,8 @@ function toDateString(value) {
 }
 
 dotenv.config();
+
+const JWT_SECRET = process.env.JWT_SECRET || 'change-me';
 
 const app = express();
 const allowedOrigins = (process.env.CORS_ORIGIN || '').split(',').map((origin) => origin.trim()).filter(Boolean);
@@ -326,6 +329,321 @@ app.put('/api/venues/:id', async (req, res) => {
     res.json({ venue: upd.rows[0] });
   } catch (err) {
     res.status(500).json({ error: err.message });
+  }
+});
+
+// ─── JWT Auth Middleware ─────────────────────────────────────────────────────
+function authenticateToken(req, res, next) {
+  const authHeader = req.headers['authorization'];
+  const token = authHeader && authHeader.split(' ')[1]; // Bearer <token>
+
+  if (!token) {
+    return res.status(401).json({ ok: false, message: 'Akses ditolak. Silakan login terlebih dahulu.' });
+  }
+
+  try {
+    const decoded = jwt.verify(token, JWT_SECRET);
+    req.user = decoded; // { user_id, username, roles }
+    next();
+  } catch (err) {
+    return res.status(401).json({ ok: false, message: 'Token tidak valid atau sudah kedaluwarsa.' });
+  }
+}
+
+function requireAdmin(req, res, next) {
+  const roles = (req.user.roles || []).map(r => r.toLowerCase());
+  if (!roles.includes('admin')) {
+    return res.status(403).json({ ok: false, message: 'Hanya Admin yang dapat melakukan aksi ini.' });
+  }
+  next();
+}
+
+function requireAdminOrOrganizer(req, res, next) {
+  const roles = (req.user.roles || []).map(r => r.toLowerCase());
+  if (!roles.includes('admin') && !roles.includes('organizer')) {
+    return res.status(403).json({ ok: false, message: 'Hanya Admin atau Organizer yang dapat melakukan aksi ini.' });
+  }
+  next();
+}
+
+// ─── ARTIST endpoints ────────────────────────────────────────────────────────
+
+// READ — all logged-in users (Admin, Organizer, Customer) can view artist list
+app.get('/api/artists', authenticateToken, async (req, res) => {
+  try {
+    const eventArtistExists = await tableExists('TIKTAKTUK', 'EVENT_ARTIST');
+
+    const result = eventArtistExists
+      ? await query(`
+          SELECT a.artist_id, a.name, a.genre,
+                 COUNT(ea.event_id)::int AS event_count
+          FROM TIKTAKTUK.ARTIST a
+          LEFT JOIN TIKTAKTUK.EVENT_ARTIST ea ON ea.artist_id = a.artist_id
+          GROUP BY a.artist_id, a.name, a.genre
+          ORDER BY a.name ASC
+        `)
+      : await query(`
+          SELECT artist_id, name, genre, 0 AS event_count
+          FROM TIKTAKTUK.ARTIST
+          ORDER BY name ASC
+        `);
+
+    res.json({ ok: true, data: result.rows });
+  } catch (err) {
+    res.status(500).json({ ok: false, message: err.message });
+  }
+});
+
+// CREATE — Admin only
+app.post('/api/artists', authenticateToken, requireAdmin, async (req, res) => {
+  const payload = req.body.data || req.body;
+  const name = (payload.name || '').trim();
+  const genre = (payload.genre || '').trim() || null;
+
+  if (!name) {
+    return res.status(400).json({ ok: false, message: 'Nama artist wajib diisi.' });
+  }
+
+  if (name.length > 100) {
+    return res.status(400).json({ ok: false, message: 'Nama artist maksimal 100 karakter.' });
+  }
+
+  if (genre && genre.length > 50) {
+    return res.status(400).json({ ok: false, message: 'Genre maksimal 50 karakter.' });
+  }
+
+  try {
+    const ins = await query(
+      'INSERT INTO TIKTAKTUK.ARTIST (name, genre) VALUES ($1, $2) RETURNING artist_id, name, genre',
+      [name, genre]
+    );
+    res.status(201).json({ ok: true, data: ins.rows[0], message: 'Artis berhasil ditambahkan.' });
+  } catch (err) {
+    res.status(500).json({ ok: false, message: err.message });
+  }
+});
+
+// UPDATE — Admin only
+app.put('/api/artists/:id', authenticateToken, requireAdmin, async (req, res) => {
+  const { id } = req.params;
+  const payload = req.body.data || req.body;
+  const name = (payload.name || '').trim();
+  const genre = (payload.genre || '').trim() || null;
+
+  if (!name) {
+    return res.status(400).json({ ok: false, message: 'Nama artist wajib diisi.' });
+  }
+
+  if (name.length > 100) {
+    return res.status(400).json({ ok: false, message: 'Nama artist maksimal 100 karakter.' });
+  }
+
+  if (genre && genre.length > 50) {
+    return res.status(400).json({ ok: false, message: 'Genre maksimal 50 karakter.' });
+  }
+
+  try {
+    const existing = await query('SELECT artist_id FROM TIKTAKTUK.ARTIST WHERE artist_id = $1', [id]);
+    if (existing.rowCount === 0) {
+      return res.status(404).json({ ok: false, message: 'Artis tidak ditemukan.' });
+    }
+
+    const upd = await query(
+      'UPDATE TIKTAKTUK.ARTIST SET name = $1, genre = $2 WHERE artist_id = $3 RETURNING artist_id, name, genre',
+      [name, genre, id]
+    );
+    res.json({ ok: true, data: upd.rows[0], message: 'Artis berhasil diperbarui.' });
+  } catch (err) {
+    res.status(500).json({ ok: false, message: err.message });
+  }
+});
+
+// DELETE — Admin only
+app.delete('/api/artists/:id', authenticateToken, requireAdmin, async (req, res) => {
+  const { id } = req.params;
+
+  try {
+    const existing = await query('SELECT artist_id, name FROM TIKTAKTUK.ARTIST WHERE artist_id = $1', [id]);
+    if (existing.rowCount === 0) {
+      return res.status(404).json({ ok: false, message: 'Artis tidak ditemukan.' });
+    }
+
+    await query('DELETE FROM TIKTAKTUK.ARTIST WHERE artist_id = $1', [id]);
+    res.json({ ok: true, message: `Artis "${existing.rows[0].name}" berhasil dihapus.` });
+  } catch (err) {
+    res.status(500).json({ ok: false, message: err.message });
+  }
+});
+
+// ─── TICKET CATEGORY endpoints ──────────────────────────────────────────────
+
+// READ — public (guest can view)
+app.get('/api/ticket-categories', async (_req, res) => {
+  try {
+    const result = await query(
+      `
+        SELECT
+          c.category_id,
+          c.category_name,
+          c.quota,
+          c.price,
+          c.tevent_id,
+          COALESCE(e.event_title, '-') AS event_name
+        FROM TIKTAKTUK.TICKET_CATEGORY c
+        LEFT JOIN TIKTAKTUK.EVENT e ON e.event_id = c.tevent_id
+        ORDER BY e.event_title ASC, c.category_name ASC
+      `
+    );
+
+    res.json({ ok: true, data: result.rows });
+  } catch (err) {
+    res.status(500).json({ ok: false, message: err.message });
+  }
+});
+
+// CREATE — Admin/Organizer only
+app.post('/api/ticket-categories', authenticateToken, requireAdminOrOrganizer, async (req, res) => {
+  const payload = req.body.data || req.body;
+  const categoryName = (payload.category_name || '').trim();
+  const quota = Number(payload.quota);
+  const price = Number(payload.price);
+  const eventId = String(payload.tevent_id || '').trim();
+
+  if (!categoryName || !eventId) {
+    return res.status(400).json({ ok: false, message: 'Nama kategori dan event wajib diisi.' });
+  }
+
+  if (categoryName.length > 100) {
+    return res.status(400).json({ ok: false, message: 'Nama kategori maksimal 100 karakter.' });
+  }
+
+  if (!Number.isInteger(quota) || quota <= 0) {
+    return res.status(400).json({ ok: false, message: 'Kuota harus berupa bilangan bulat positif (> 0).' });
+  }
+
+  if (Number.isNaN(price) || price < 0) {
+    return res.status(400).json({ ok: false, message: 'Harga harus berupa bilangan tidak negatif (>= 0).' });
+  }
+
+  try {
+    const eventRes = await query('SELECT event_id, venue_id FROM TIKTAKTUK.EVENT WHERE event_id = $1', [eventId]);
+    if (eventRes.rowCount === 0) {
+      return res.status(400).json({ ok: false, message: 'Event tidak ditemukan.' });
+    }
+
+    const venueRes = await query('SELECT venue_name, capacity FROM TIKTAKTUK.VENUE WHERE venue_id = $1', [eventRes.rows[0].venue_id]);
+    if (venueRes.rowCount === 0) {
+      return res.status(400).json({ ok: false, message: 'Venue tidak ditemukan.' });
+    }
+
+    const quotaRes = await query(
+      'SELECT COALESCE(SUM(quota), 0)::int AS total FROM TIKTAKTUK.TICKET_CATEGORY WHERE tevent_id = $1',
+      [eventId]
+    );
+    const currentTotal = Number(quotaRes.rows[0]?.total || 0);
+
+    if (currentTotal + quota > Number(venueRes.rows[0].capacity)) {
+      return res.status(400).json({
+        ok: false,
+        message: `Total kuota (${currentTotal + quota}) melebihi kapasitas venue ${venueRes.rows[0].venue_name} (${venueRes.rows[0].capacity}).`,
+      });
+    }
+
+    const ins = await query(
+      'INSERT INTO TIKTAKTUK.TICKET_CATEGORY (category_name, quota, price, tevent_id) VALUES ($1,$2,$3,$4) RETURNING category_id, category_name, quota, price, tevent_id',
+      [categoryName, quota, price, eventId]
+    );
+
+    res.status(201).json({ ok: true, data: ins.rows[0], message: 'Kategori tiket berhasil ditambahkan.' });
+  } catch (err) {
+    res.status(500).json({ ok: false, message: err.message });
+  }
+});
+
+// UPDATE — Admin/Organizer only
+app.put('/api/ticket-categories/:id', authenticateToken, requireAdminOrOrganizer, async (req, res) => {
+  const { id } = req.params;
+  const payload = req.body.data || req.body;
+  const categoryName = (payload.category_name || '').trim();
+  const quota = Number(payload.quota);
+  const price = Number(payload.price);
+  const eventId = String(payload.tevent_id || '').trim();
+
+  if (!categoryName || !eventId) {
+    return res.status(400).json({ ok: false, message: 'Nama kategori dan event wajib diisi.' });
+  }
+
+  if (categoryName.length > 100) {
+    return res.status(400).json({ ok: false, message: 'Nama kategori maksimal 100 karakter.' });
+  }
+
+  if (!Number.isInteger(quota) || quota <= 0) {
+    return res.status(400).json({ ok: false, message: 'Kuota harus berupa bilangan bulat positif (> 0).' });
+  }
+
+  if (Number.isNaN(price) || price < 0) {
+    return res.status(400).json({ ok: false, message: 'Harga harus berupa bilangan tidak negatif (>= 0).' });
+  }
+
+  try {
+    const existing = await query('SELECT category_id FROM TIKTAKTUK.TICKET_CATEGORY WHERE category_id = $1', [id]);
+    if (existing.rowCount === 0) {
+      return res.status(404).json({ ok: false, message: 'Kategori tiket tidak ditemukan.' });
+    }
+
+    const eventRes = await query('SELECT event_id, venue_id FROM TIKTAKTUK.EVENT WHERE event_id = $1', [eventId]);
+    if (eventRes.rowCount === 0) {
+      return res.status(400).json({ ok: false, message: 'Event tidak ditemukan.' });
+    }
+
+    const venueRes = await query('SELECT venue_name, capacity FROM TIKTAKTUK.VENUE WHERE venue_id = $1', [eventRes.rows[0].venue_id]);
+    if (venueRes.rowCount === 0) {
+      return res.status(400).json({ ok: false, message: 'Venue tidak ditemukan.' });
+    }
+
+    const quotaRes = await query(
+      'SELECT COALESCE(SUM(quota), 0)::int AS total FROM TIKTAKTUK.TICKET_CATEGORY WHERE tevent_id = $1 AND category_id <> $2',
+      [eventId, id]
+    );
+    const otherTotal = Number(quotaRes.rows[0]?.total || 0);
+
+    if (otherTotal + quota > Number(venueRes.rows[0].capacity)) {
+      return res.status(400).json({
+        ok: false,
+        message: `Total kuota (${otherTotal + quota}) melebihi kapasitas venue ${venueRes.rows[0].venue_name} (${venueRes.rows[0].capacity}).`,
+      });
+    }
+
+    const upd = await query(
+      'UPDATE TIKTAKTUK.TICKET_CATEGORY SET category_name = $1, quota = $2, price = $3, tevent_id = $4 WHERE category_id = $5 RETURNING category_id, category_name, quota, price, tevent_id',
+      [categoryName, quota, price, eventId, id]
+    );
+
+    res.json({ ok: true, data: upd.rows[0], message: 'Kategori tiket berhasil diperbarui.' });
+  } catch (err) {
+    res.status(500).json({ ok: false, message: err.message });
+  }
+});
+
+// DELETE — Admin/Organizer only
+app.delete('/api/ticket-categories/:id', authenticateToken, requireAdminOrOrganizer, async (req, res) => {
+  const { id } = req.params;
+
+  try {
+    const existing = await query('SELECT category_id, category_name FROM TIKTAKTUK.TICKET_CATEGORY WHERE category_id = $1', [id]);
+    if (existing.rowCount === 0) {
+      return res.status(404).json({ ok: false, message: 'Kategori tiket tidak ditemukan.' });
+    }
+
+    const hasTickets = await query('SELECT 1 FROM TIKTAKTUK.TICKET WHERE category_id = $1 LIMIT 1', [id]);
+    if (hasTickets.rowCount > 0) {
+      return res.status(400).json({ ok: false, message: 'Kategori tidak bisa dihapus karena sudah ada tiket yang terbit.' });
+    }
+
+    await query('DELETE FROM TIKTAKTUK.TICKET_CATEGORY WHERE category_id = $1', [id]);
+    res.json({ ok: true, message: `Kategori "${existing.rows[0].category_name}" berhasil dihapus.` });
+  } catch (err) {
+    res.status(500).json({ ok: false, message: err.message });
   }
 });
 
@@ -678,7 +996,7 @@ app.post('/api/orders', async (req, res) => {
 
   } catch (err) {
     await client.query('ROLLBACK');
-    console.error("Order Error:", err.message);
+    console.error('Order Error:', err.message);
 
     // Formatting error message dari trigger database
     const msg = err.message || '';
