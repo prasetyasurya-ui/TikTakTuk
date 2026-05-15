@@ -95,12 +95,6 @@ app.post('/api/venues', async (req, res) => {
   if (!venue_name || !city) return res.status(400).json({ error: 'Missing fields' });
 
   try {
-    const dup = await query('SELECT venue_id FROM TIKTAKTUK.VENUE WHERE LOWER(venue_name)=LOWER($1) AND LOWER(city)=LOWER($2)', [venue_name, city]);
-    if (dup.rowCount > 0) {
-      const id = dup.rows[0].venue_id;
-      return res.status(400).json({ error: `ERROR: Venue "${venue_name}" di kota "${city}" sudah terdaftar dengan ID ${id}.` });
-    }
-
     const ins = await query('INSERT INTO TIKTAKTUK.VENUE (venue_name, capacity, address, city, jenis_seating) VALUES ($1,$2,$3,$4,$5) RETURNING *', [venue_name, capacity, address, city, jenis_seating]);
     res.status(201).json({ venue: ins.rows[0] });
   } catch (err) {
@@ -122,10 +116,6 @@ app.delete('/api/venues/:id', async (req, res) => {
   try {
     const v = await query('SELECT venue_id, venue_name FROM TIKTAKTUK.VENUE WHERE venue_id = $1', [req.params.id]);
     if (v.rowCount === 0) return res.status(404).json({ error: 'Venue not found' });
-    const venue = v.rows[0];
-
-    const active = await query("SELECT 1 FROM TIKTAKTUK.EVENT WHERE venue_id = $1 AND event_datetime >= NOW() LIMIT 1", [req.params.id]);
-    if (active.rowCount > 0) return res.status(400).json({ error: `ERROR: Venue "${venue.venue_name}" masih memiliki event aktif sehingga tidak dapat dihapus.` });
 
     await query('DELETE FROM TIKTAKTUK.VENUE WHERE venue_id = $1', [req.params.id]);
     res.json({ message: 'Venue deleted' });
@@ -319,11 +309,6 @@ app.put('/api/venues/:id', async (req, res) => {
   try {
     const v = await query('SELECT venue_id FROM TIKTAKTUK.VENUE WHERE venue_id = $1', [req.params.id]);
     if (v.rowCount === 0) return res.status(404).json({ error: 'Venue not found' });
-
-    const dup = await query('SELECT venue_id FROM TIKTAKTUK.VENUE WHERE LOWER(venue_name)=LOWER($1) AND LOWER(city)=LOWER($2) AND venue_id != $3', [venue_name, city, req.params.id]);
-    if (dup.rowCount > 0) {
-      return res.status(400).json({ error: `Venue "${venue_name}" di kota "${city}" sudah terdaftar.` });
-    }
 
     const upd = await query('UPDATE TIKTAKTUK.VENUE SET venue_name = $1, capacity = $2, address = $3, city = $4, jenis_seating = $5 WHERE venue_id = $6 RETURNING *', [venue_name, capacity, address, city, jenis_seating, req.params.id]);
     res.json({ venue: upd.rows[0] });

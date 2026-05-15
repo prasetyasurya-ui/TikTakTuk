@@ -14,7 +14,7 @@ BEGIN
       AND venue_id != NEW.venue_id;
 
     IF existing_venue_id IS NOT NULL THEN
-        RAISE EXCEPTION 'ERROR: Venue "%" di kota "%" sudah terdaftar dengan ID %.', 
+        RAISE EXCEPTION 'ERROR: Venue "%" di kota "%" sudah terdaftar dengan ID %.',
             NEW.venue_name, NEW.city, existing_venue_id;
     END IF;
 

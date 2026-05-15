@@ -14,16 +14,7 @@ async function registerAccount(req, res, roleOverride) {
 
   if (!username || !password || !role) return res.status(400).json({ error: 'Missing fields' });
 
-  if (!/^[A-Za-z0-9]+$/.test(username)) {
-    return res.status(400).json({ error: `ERROR: Username "${username}" hanya boleh mengandung huruf dan angka tanpa simbol atau spasi.` });
-  }
-
   try {
-    const exists = await query('SELECT user_id FROM TIKTAKTUK.USER_ACCOUNT WHERE LOWER(username) = LOWER($1)', [username]);
-    if (exists.rowCount > 0) {
-      return res.status(400).json({ error: `ERROR: Username "${username}" sudah terdaftar, gunakan username lain.` });
-    }
-
     const hashed = await bcrypt.hash(password, 10);
     const insert = await query('INSERT INTO TIKTAKTUK.USER_ACCOUNT (username, password) VALUES ($1, $2) RETURNING user_id, username', [username, hashed]);
     const user = insert.rows[0];
