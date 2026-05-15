@@ -64,6 +64,10 @@ function normalizeOrderId(value) {
   return String(value || '').trim().toLowerCase();
 }
 
+function normalizeSearchText(value) {
+  return String(value || '').trim().toLowerCase();
+}
+
 function normalizePaymentStatus(value) {
   return String(value || '').trim().toUpperCase();
 }
@@ -147,14 +151,19 @@ const OrderPage = () => {
   }, [orders]);
 
   const filteredOrders = useMemo(() => {
-    const q = searchQuery.trim().toLowerCase();
+    const q = normalizeSearchText(searchQuery);
     const status = String(statusFilter || '').toUpperCase();
     const normalizedQuery = normalizeOrderId(searchQuery);
+    const queryLooksLikeOrderId = Boolean(normalizedQuery) && (
+      /\d/.test(normalizedQuery) || /[^a-z\s]/.test(normalizedQuery)
+    );
 
     return orders.filter((order) => {
-      const idMatch = normalizedQuery ? normalizeOrderId(order.orderId).includes(normalizedQuery) : true;
-      const customerMatch = showCustomerColumn
-        ? String(order.customerName || '').trim().toLowerCase().includes(q)
+      const idMatch = queryLooksLikeOrderId && normalizedQuery
+        ? normalizeOrderId(order.orderId).includes(normalizedQuery)
+        : false;
+      const customerMatch = !queryLooksLikeOrderId && showCustomerColumn
+        ? normalizeSearchText(order.customerName).includes(q)
         : false;
       const matchesSearch = !q ? true : idMatch || customerMatch;
 
