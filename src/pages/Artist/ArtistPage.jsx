@@ -15,6 +15,7 @@ const ArtistPage = () => {
   const [formData, setFormData] = useState({ name: "", genre: "" });
   const [errors, setErrors] = useState({});
   const [successMessage, setSuccessMessage] = useState("");
+  const [loadError, setLoadError] = useState('');
 
   const session = getCurrentSession();
   const isLoggedIn = session.isLoggedIn;
@@ -30,11 +31,21 @@ const ArtistPage = () => {
 
   const loadArtists = async () => {
     setIsLoading(true);
-    const result = await artistApi.getArtists();
-    if (result.data?.ok) {
-      setArtists(result.data.data);
+    setLoadError('');
+    try {
+      const result = await artistApi.getArtists();
+      if (result.data?.ok) {
+        setArtists(Array.isArray(result.data.data) ? result.data.data : []);
+      } else {
+        setArtists([]);
+        setLoadError(result.data?.message || 'Gagal memuat data artis.');
+      }
+    } catch (error) {
+      setArtists([]);
+      setLoadError(error?.message || 'Gagal memuat data artis.');
+    } finally {
+      setIsLoading(false);
     }
-    setIsLoading(false);
   };
 
   useEffect(() => {
@@ -220,6 +231,12 @@ const ArtistPage = () => {
               {filteredArtists.length} artis ditemukan
             </div>
           </div>
+
+          {loadError && (
+            <div className="mx-6 mb-4 rounded-xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700">
+              {loadError}
+            </div>
+          )}
 
           <div className="overflow-x-auto">
             <table className="w-full text-left border-collapse">
