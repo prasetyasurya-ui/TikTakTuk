@@ -6,6 +6,7 @@ import authRouter from './routes/auth.js';
 import dashboardRouter from './routes/dashboard.js';
 import profileRouter from './routes/profile.js';
 import { columnExists, tableExists, isUuidLike } from './utils/dbHelpers.js';
+import { poolInstance } from './server/db.js';
 
 // Helper functions for venues and events
 async function resolveOrganizerId(inputId) {
@@ -36,6 +37,16 @@ async function syncEventArtists(eventId, artists) {
       [eventId, row.artist_id, 'Performer']
     );
   }
+}
+
+function toDateString(value) {
+  if (!value) return null;
+  const str = String(value);
+  const match = str.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  if (match) return str;
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return str;
+  return date.toISOString().slice(0, 10);
 }
 
 dotenv.config();
@@ -530,7 +541,7 @@ app.post('/api/orders', async (req, res) => {
 
     // 2. Destructuring input (Hanya sekali di awal)
     // Catatan: userId diambil dari req.body atau req.user tergantung middleware Anda
-    const { eventId, categoryId, quantity, seatIds, promoCode, userId } = req.body;
+    const { eventId, categoryId, quantity, promoCode, userId } = req.body;
 
     // 3. Validasi Dasar Input
     if (!eventId || !categoryId) {
