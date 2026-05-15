@@ -650,7 +650,7 @@ app.delete('/api/ticket-categories/:id', authenticateToken, requireAdminOrOrgani
 // ===================== TICKET QUOTA (Stored Procedure) =====================
 app.get('/api/events/:id/ticket-quota', async (req, res) => {
   try {
-    const result = await query('SELECT * FROM TIKTAKTUK.get_ticket_quota($1)', [req.params.id]);
+    const result = await query('SELECT * FROM TIKTAKTUK.get_ticket_category_remaining($1)', [req.params.id]);
     res.json({ categories: result.rows });
   } catch (err) {
     // Forward the stored procedure error message directly
@@ -1984,7 +1984,6 @@ app.post('/api/tickets', authenticateToken, requireAdminOrOrganizer, async (req,
 app.post('/api/event-artists', async (req, res) => {
   try {
     const { event_id, artist_id, role } = req.body;
-    if (!event_id || !artist_id) return res.status(400).json({ error: 'Missing fields' });
 
     await query(
       'INSERT INTO TIKTAKTUK.EVENT_ARTIST (event_id, artist_id, role) VALUES ($1, $2, $3)',
