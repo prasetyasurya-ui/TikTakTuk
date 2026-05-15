@@ -60,6 +60,14 @@ function PaymentStatusPill({ status }) {
   );
 }
 
+function normalizeOrderId(value) {
+  return String(value || '').trim().toLowerCase();
+}
+
+function normalizePaymentStatus(value) {
+  return String(value || '').trim().toUpperCase();
+}
+
 function ModalShell({ title, onClose, children }) {
   return (
     <div className="fixed inset-0 z-50 bg-black/40 flex items-center justify-center p-4">
@@ -141,15 +149,16 @@ const OrderPage = () => {
   const filteredOrders = useMemo(() => {
     const q = searchQuery.trim().toLowerCase();
     const status = String(statusFilter || '').toUpperCase();
+    const normalizedQuery = normalizeOrderId(searchQuery);
 
     return orders.filter((order) => {
-      const idMatch = String(order.orderId || '').toLowerCase().includes(q);
+      const idMatch = normalizedQuery ? normalizeOrderId(order.orderId).includes(normalizedQuery) : true;
       const customerMatch = showCustomerColumn
-        ? String(order.customerName || '').toLowerCase().includes(q)
+        ? String(order.customerName || '').trim().toLowerCase().includes(q)
         : false;
       const matchesSearch = !q ? true : idMatch || customerMatch;
 
-      const matchesStatus = !status ? true : String(order.paymentStatus).toUpperCase() === status;
+      const matchesStatus = !status ? true : normalizePaymentStatus(order.paymentStatus) === status;
       return matchesSearch && matchesStatus;
     });
   }, [orders, searchQuery, statusFilter, showCustomerColumn]);
