@@ -491,10 +491,23 @@ const VenuePage = () => {
                   Apakah Anda yakin ingin menghapus venue ini? Tindakan ini tidak dapat dibatalkan.
                 </p>
 
+                {errors.delete && (
+                  <div className="mt-6 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-red-700 text-sm font-medium">
+                    {errors.delete}
+                  </div>
+                )}
+
                 <div className="mt-8 flex justify-end gap-4">
                   <button
                     type="button"
-                    onClick={() => setIsDeleteConfirmOpen(false)}
+                    onClick={() => {
+                      setErrors((prev) => {
+                        const next = { ...prev };
+                        delete next.delete;
+                        return next;
+                      });
+                      setIsDeleteConfirmOpen(false);
+                    }}
                     className="px-8 py-3 rounded-2xl border border-slate-200 bg-white text-slate-700 font-bold hover:bg-slate-50"
                   >
                     Batal

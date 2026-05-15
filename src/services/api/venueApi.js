@@ -1,5 +1,35 @@
 import { apiClient } from '../core/apiClient';
 
+function getErrorMessage(data, fallback) {
+  if (!data) return fallback;
+
+  if (typeof data === 'string' && data.trim()) {
+    return data;
+  }
+
+  if (typeof data === 'object') {
+    if (typeof data.error === 'string' && data.error.trim()) {
+      return data.error;
+    }
+
+    if (typeof data.message === 'string' && data.message.trim()) {
+      return data.message;
+    }
+
+    if (data.error && typeof data.error === 'object') {
+      if (typeof data.error.message === 'string' && data.error.message.trim()) {
+        return data.error.message;
+      }
+
+      if (typeof data.error.error === 'string' && data.error.error.trim()) {
+        return data.error.error;
+      }
+    }
+  }
+
+  return fallback;
+}
+
 // READ: Fetch all venues
 export async function fetchVenues() {
   try {
@@ -51,6 +81,13 @@ export async function createVenue(venueData) {
       jenis_seating: jenis_seating || 'FREE_SEATING'
     });
 
+    if (response.status < 200 || response.status >= 300) {
+      return {
+        success: false,
+        error: getErrorMessage(response.data, 'Gagal menyimpan venue.'),
+      };
+    }
+
     return {
       success: true,
       venue: response.data.venue
@@ -59,7 +96,7 @@ export async function createVenue(venueData) {
     console.error('Error creating venue:', error);
     return {
       success: false,
-      error: error.response?.data?.error || error.message
+      error: getErrorMessage(error.response?.data, error.message || 'Gagal menyimpan venue.'),
     };
   }
 }
@@ -77,6 +114,13 @@ export async function updateVenue(venueId, venueData) {
       jenis_seating: jenis_seating || 'FREE_SEATING'
     });
 
+    if (response.status < 200 || response.status >= 300) {
+      return {
+        success: false,
+        error: getErrorMessage(response.data, 'Gagal menyimpan venue.'),
+      };
+    }
+
     return {
       success: true,
       venue: response.data.venue
@@ -85,7 +129,7 @@ export async function updateVenue(venueId, venueData) {
     console.error('Error updating venue:', error);
     return {
       success: false,
-      error: error.response?.data?.error || error.message
+      error: getErrorMessage(error.response?.data, error.message || 'Gagal menyimpan venue.'),
     };
   }
 }
@@ -94,6 +138,14 @@ export async function updateVenue(venueId, venueData) {
 export async function deleteVenue(venueId) {
   try {
     const response = await apiClient.delete(`/venues/${venueId}`);
+
+    if (response.status < 200 || response.status >= 300) {
+      return {
+        success: false,
+        error: getErrorMessage(response.data, 'Gagal menghapus venue.'),
+      };
+    }
+
     return {
       success: true,
       message: response.data.message
@@ -102,7 +154,7 @@ export async function deleteVenue(venueId) {
     console.error('Error deleting venue:', error);
     return {
       success: false,
-      error: error.response?.data?.error || error.message
+      error: getErrorMessage(error.response?.data, error.message || 'Gagal menghapus venue.'),
     };
   }
 }

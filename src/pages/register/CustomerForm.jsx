@@ -6,7 +6,6 @@ import {
   normalizePhone,
   isValidEmail,
   isValidPhone,
-  isValidUsername,
   isValidPassword,
   SQL_MAX_LENGTH,
   hasMaxLength,
@@ -79,10 +78,6 @@ const CustomerForm = () => {
       nextErrors.phone_number = `Nomor telepon maksimal ${SQL_MAX_LENGTH.PHONE_NUMBER} karakter`;
     }
 
-    if (!isValidUsername(normalized.username)) {
-      nextErrors.username = 'Username minimal 4 karakter (huruf/angka/underscore)';
-    }
-
     if (!isValidPassword(normalized.password)) {
       nextErrors.password = 'Password minimal 6 karakter';
     }
@@ -114,7 +109,7 @@ const CustomerForm = () => {
       
       alert("Registrasi Berhasil!");
       navigate('/login');
-    } catch (err) {
+    } catch {
       setErrors((prev) => ({ ...prev, username: 'Terjadi kesalahan jaringan atau server.' }));
       setIsLoading(false); // Set loading ke false jika error jaringan
     }
@@ -188,7 +183,6 @@ const CustomerForm = () => {
               required
               maxLength={100}
               minLength={4}
-              pattern="[A-Za-z0-9_]+"
               value={formData.username}
               onChange={handleChange}
               disabled={isLoading}

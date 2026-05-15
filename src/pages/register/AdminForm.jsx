@@ -6,7 +6,6 @@ import {
   normalizePhone,
   isValidEmail,
   isValidPhone,
-  isValidUsername,
   isValidPassword,
   SQL_MAX_LENGTH,
   hasMaxLength,
@@ -77,10 +76,6 @@ const AdminForm = () => {
 
     if (!hasMaxLength(normalized.phone_number, SQL_MAX_LENGTH.PHONE_NUMBER)) {
       nextErrors.phone_number = `Nomor telepon maksimal ${SQL_MAX_LENGTH.PHONE_NUMBER} karakter`;
-    }
-
-    if (!isValidUsername(normalized.username)) {
-      nextErrors.username = 'Username minimal 4 karakter (huruf/angka/underscore)';
     }
 
     if (!isValidPassword(normalized.password)) {
@@ -188,7 +183,6 @@ const AdminForm = () => {
               required
               maxLength={100}
               minLength={4}
-              pattern="[A-Za-z0-9_]+"
               value={formData.username}
               onChange={handleChange}
               disabled={isLoading}

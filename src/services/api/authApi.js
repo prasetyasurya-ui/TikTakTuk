@@ -1,11 +1,41 @@
 import { apiClient } from '../core/apiClient';
 
+function extractAuthMessage(data) {
+	if (!data) return '';
+
+	if (typeof data === 'string') return data;
+
+	if (typeof data === 'object') {
+		if (typeof data.message === 'string' && data.message.trim()) {
+			return data.message;
+		}
+
+		if (typeof data.error === 'string' && data.error.trim()) {
+			return data.error;
+		}
+
+		if (data.error && typeof data.error === 'object') {
+			if (typeof data.error.message === 'string' && data.error.message.trim()) {
+				return data.error.message;
+			}
+
+			if (typeof data.error.error === 'string' && data.error.error.trim()) {
+				return data.error.error;
+			}
+		}
+	}
+
+	return '';
+}
+
 function toAuthResult(response) {
 	const data = response && typeof response.data === 'object' && response.data !== null ? response.data : {};
+	const message = extractAuthMessage(response?.data) || 'Registrasi gagal';
 	return {
 		ok: response.status >= 200 && response.status < 300,
 		status: response.status,
 		...data,
+		message,
 	};
 }
 

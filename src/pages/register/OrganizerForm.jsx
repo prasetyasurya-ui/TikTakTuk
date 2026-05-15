@@ -4,7 +4,6 @@ import { registerOrganizer } from '../../services/api';
 import {
   normalizeText,
   isValidEmail,
-  isValidUsername,
   isValidPassword,
   SQL_MAX_LENGTH,
   hasMaxLength,
@@ -90,10 +89,6 @@ const OrganizerForm = () => {
 
     if (!hasMaxLength(normalized.contact_email, SQL_MAX_LENGTH.CONTACT_EMAIL)) {
       nextErrors.contact_email = `Email maksimal ${SQL_MAX_LENGTH.CONTACT_EMAIL} karakter`;
-    }
-
-    if (!isValidUsername(normalized.username)) {
-      nextErrors.username = 'Username minimal 4 karakter (huruf/angka/underscore)';
     }
 
     if (!isValidPassword(normalized.password)) {
@@ -188,7 +183,6 @@ const OrganizerForm = () => {
               required
               maxLength={SQL_MAX_LENGTH.USERNAME}
               minLength={4}
-              pattern="[A-Za-z0-9_]+"
               value={formData.baseData.username}
               onChange={handleChange}
               disabled={isLoading}
