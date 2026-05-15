@@ -1251,6 +1251,224 @@ app.delete('/api/promotions/:id', async (req, res) => {
   }
 });
 
+// SEAT api endpoints
+
+// GET /api/seats, fetch seats
+app.get('/api/seats', async (req, res) => {
+  try {
+    
+    const hasSectionCol = await columnExists('TIKTAKTUK', 'SEAT', 'section');
+    const hasRowNumberCol = await columnExists('TIKTAKTUK', 'SEAT', 'row_number');
+
+    const sectionCol = hasSectionCol ? 'section' : 'zone';
+    const rowNumberCol = hasRowNumberCol ? 'row_number' : 'seat_number';
+
+    
+    const hasSeatIdInHR = await columnExists('TIKTAKTUK', 'HAS_RELATIONSHIP', 'seat_id');
+
+    let assignedSeatIds = new Set();
+    if (hasSeatIdInHR) {
+      const hrRes = await query('SELECT DISTINCT seat_id FROM TIKTAKTUK.HAS_RELATIONSHIP');
+      assignedSeatIds = new Set(hrRes.rows.map(r => String(r.seat_id)));
+    }
+
+    const seatsRes = await query(`
+      SELECT s.seat_id, s.${sectionCol} AS section, s.seat_number,
+             ${hasRowNumberCol ? 's.row_number' : "s.seat_number AS row_number"},
+             s.venue_id, v.venue_name
+      FROM TIKTAKTUK.SEAT s
+      LEFT JOIN TIKTAKTUK.VENUE v ON v.venue_id = s.venue_id
+      ORDER BY v.venue_name, s.${sectionCol}, s.seat_number
+    `);
+
+    const seats = seatsRes.rows.map(row => ({
+      id: row.seat_id,
+      venueId: row.venue_id,
+      venueName: row.venue_name || '-',
+      section: row.section || '-',
+      rowNumber: row.row_number || '-',
+      seatNumber: row.seat_number || '-',
+      status: assignedSeatIds.has(String(row.seat_id)) ? 'TERISI' : 'TERSEDIA'
+    }));
+
+    
+    const venuesRes = await query('SELECT venue_id, venue_name FROM TIKTAKTUK.VENUE ORDER BY venue_name');
+    const venues = venuesRes.rows.map(v => ({ id: v.venue_id, name: v.venue_name }));
+
+    res.json({ ok: true, seats, venues });
+  } catch (err) {
+    res.status(500).json({ ok: false, message: err.message });
+  }
+});
+
+// POST /api/seats, create seat (Admin, Organizer)
+app.post('/api/seats', authenticateToken, requireAdminOrOrganizer, async (req, res) => {
+  const payload = req.body.data || req.body;
+  const venueId = (payload.venueId || payload.venue_id || '').trim();
+  const section = (payload.section || '').trim();
+  const rowNumber = (payload.rowNumber || payload.row_number || '').trim();
+  const seatNumber = (payload.seatNumber || payload.seat_number || '').trim();
+
+  if (!venueId || !section || !rowNumber || !seatNumber) {
+    return res.status(400).json({ ok: false, message: 'Semua field wajib diisi.' });
+  }
+
+  try {
+    // Verify venue exists
+    const venueRes = await query('SELECT venue_id FROM TIKTAKTUK.VENUE WHERE venue_id = $1', [venueId]);
+    if (venueRes.rowCount === 0) {
+      return res.status(400).json({ ok: false, message: 'Venue tidak ditemukan.' });
+    }
+
+    // Detect column names
+    const hasSectionCol = await columnExists('TIKTAKTUK', 'SEAT', 'section');
+    const hasRowNumberCol = await columnExists('TIKTAKTUK', 'SEAT', 'row_number');
+
+    let ins;
+    if (hasSectionCol && hasRowNumberCol) {
+      ins = await query(
+        'INSERT INTO TIKTAKTUK.SEAT (section, row_number, seat_number, venue_id) VALUES ($1, $2, $3, $4) RETURNING seat_id, section, row_number, seat_number, venue_id',
+        [section, rowNumber, seatNumber, venueId]
+      );
+    } else if (hasSectionCol) {
+      ins = await query(
+        'INSERT INTO TIKTAKTUK.SEAT (section, seat_number, venue_id) VALUES ($1, $2, $3) RETURNING seat_id, section, seat_number, venue_id',
+        [section, seatNumber, venueId]
+      );
+    } else {
+      
+      ins = await query(
+        'INSERT INTO TIKTAKTUK.SEAT (zone, seat_number, venue_id) VALUES ($1, $2, $3) RETURNING seat_id, zone AS section, seat_number, venue_id',
+        [section, seatNumber, venueId]
+      );
+    }
+
+    res.status(201).json({ ok: true, data: ins.rows[0], message: 'Kursi berhasil ditambahkan.' });
+  } catch (err) {
+    const msg = err.message || '';
+    const match = msg.match(/ERROR:\s*(.*)/);
+    res.status(400).json({ ok: false, message: match ? match[1].trim() : msg });
+  }
+});
+
+// PUT /api/seats/:id , update seat (Admin, Organizer)
+app.put('/api/seats/:id', authenticateToken, requireAdminOrOrganizer, async (req, res) => {
+  const { id } = req.params;
+  const payload = req.body.data || req.body;
+  const venueId = (payload.venueId || payload.venue_id || '').trim();
+  const section = (payload.section || '').trim();
+  const rowNumber = (payload.rowNumber || payload.row_number || '').trim();
+  const seatNumber = (payload.seatNumber || payload.seat_number || '').trim();
+
+  if (!venueId || !section || !rowNumber || !seatNumber) {
+    return res.status(400).json({ ok: false, message: 'Semua field wajib diisi.' });
+  }
+
+  try {
+    // Verify seat exists
+    const existing = await query('SELECT seat_id FROM TIKTAKTUK.SEAT WHERE seat_id = $1', [id]);
+    if (existing.rowCount === 0) {
+      return res.status(404).json({ ok: false, message: 'Kursi tidak ditemukan.' });
+    }
+
+    // Verify venue exists
+    const venueRes = await query('SELECT venue_id FROM TIKTAKTUK.VENUE WHERE venue_id = $1', [venueId]);
+    if (venueRes.rowCount === 0) {
+      return res.status(400).json({ ok: false, message: 'Venue tidak ditemukan.' });
+    }
+
+    // Detect column names
+    const hasSectionCol = await columnExists('TIKTAKTUK', 'SEAT', 'section');
+    const hasRowNumberCol = await columnExists('TIKTAKTUK', 'SEAT', 'row_number');
+
+    let upd;
+    if (hasSectionCol && hasRowNumberCol) {
+      upd = await query(
+        'UPDATE TIKTAKTUK.SEAT SET section = $1, row_number = $2, seat_number = $3, venue_id = $4 WHERE seat_id = $5 RETURNING seat_id, section, row_number, seat_number, venue_id',
+        [section, rowNumber, seatNumber, venueId, id]
+      );
+    } else if (hasSectionCol) {
+      upd = await query(
+        'UPDATE TIKTAKTUK.SEAT SET section = $1, seat_number = $2, venue_id = $3 WHERE seat_id = $4 RETURNING seat_id, section, seat_number, venue_id',
+        [section, seatNumber, venueId, id]
+      );
+    } else {
+      upd = await query(
+        'UPDATE TIKTAKTUK.SEAT SET zone = $1, seat_number = $2, venue_id = $3 WHERE seat_id = $4 RETURNING seat_id, zone AS section, seat_number, venue_id',
+        [section, seatNumber, venueId, id]
+      );
+    }
+
+    res.json({ ok: true, data: upd.rows[0], message: 'Data kursi berhasil diperbarui.' });
+  } catch (err) {
+    const msg = err.message || '';
+    const match = msg.match(/ERROR:\s*(.*)/);
+    res.status(400).json({ ok: false, message: match ? match[1].trim() : msg });
+  }
+});
+
+// DELETE /api/seats/:id ,delete seat (Admin, Organizer)
+// Trigger 5.1 will block if seat is assigned in HAS_RELATIONSHIP
+app.delete('/api/seats/:id', authenticateToken, requireAdminOrOrganizer, async (req, res) => {
+  const { id } = req.params;
+
+  try {
+    const existing = await query('SELECT seat_id FROM TIKTAKTUK.SEAT WHERE seat_id = $1', [id]);
+    if (existing.rowCount === 0) {
+      return res.status(404).json({ ok: false, message: 'Kursi tidak ditemukan.' });
+    }
+
+    await query('DELETE FROM TIKTAKTUK.SEAT WHERE seat_id = $1', [id]);
+    res.json({ ok: true, message: 'Kursi berhasil dihapus.' });
+  } catch (err) {
+    // Forward trigger error message (Trigger 5.1)
+    const msg = err.message || '';
+    const match = msg.match(/ERROR:\s*(.*)/);
+    const errorMessage = match ? match[1].trim() : msg;
+    res.status(400).json({ ok: false, message: errorMessage });
+  }
+});
+
+// GET /api/seats/available - get avail seats for a venue 
+app.get('/api/seats/available', async (req, res) => {
+  try {
+    const { venueId, currentSeatId } = req.query;
+    if (!venueId) return res.status(400).json({ ok: false, message: 'venueId wajib diisi.' });
+
+    const hasSectionCol = await columnExists('TIKTAKTUK', 'SEAT', 'section');
+    const hasRowNumberCol = await columnExists('TIKTAKTUK', 'SEAT', 'row_number');
+    const hasSeatIdInHR = await columnExists('TIKTAKTUK', 'HAS_RELATIONSHIP', 'seat_id');
+
+    const sectionCol = hasSectionCol ? 'section' : 'zone';
+
+    let assignedSeatIds = new Set();
+    if (hasSeatIdInHR) {
+      const hrRes = await query('SELECT DISTINCT seat_id FROM TIKTAKTUK.HAS_RELATIONSHIP');
+      assignedSeatIds = new Set(hrRes.rows.map(r => String(r.seat_id)));
+    }
+
+    const seatsRes = await query(`
+      SELECT seat_id, ${sectionCol} AS section, seat_number,
+             ${hasRowNumberCol ? 'row_number' : "seat_number AS row_number"}
+      FROM TIKTAKTUK.SEAT
+      WHERE venue_id = $1
+      ORDER BY ${sectionCol}, seat_number
+    `, [venueId]);
+
+    // Return seats that are available OR are the current seat (so it shows in dropdown)
+    const seats = seatsRes.rows
+      .filter(s => !assignedSeatIds.has(String(s.seat_id)) || String(s.seat_id) === String(currentSeatId || ''))
+      .map(s => ({
+        id: s.seat_id,
+        label: `${s.section} — Baris ${s.row_number}, No. ${s.seat_number}`
+      }));
+
+    res.json({ ok: true, seats });
+  } catch (err) {
+    res.status(500).json({ ok: false, message: err.message });
+  }
+});
+
 // ===================== EVENT ARTIST (with trigger validation) =====================
 app.post('/api/event-artists', async (req, res) => {
   try {
