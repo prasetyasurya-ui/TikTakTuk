@@ -26,6 +26,12 @@ async function httpRequest(method, url, options = {}) {
     method,
     headers: { 'Content-Type': 'application/json', ...(options.headers || {}) },
   };
+
+  const token = typeof localStorage !== 'undefined' ? localStorage.getItem('token') : '';
+  if (token && !fetchOptions.headers.Authorization) {
+    fetchOptions.headers.Authorization = `Bearer ${token}`;
+  }
+
   if (options.data) fetchOptions.body = JSON.stringify(options.data);
 
   const res = await fetch(fullUrlObject.toString(), fetchOptions);
