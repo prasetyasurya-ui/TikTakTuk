@@ -154,22 +154,26 @@ const OrderPage = () => {
     const q = normalizeSearchText(searchQuery);
     const status = String(statusFilter || '').toUpperCase();
     const normalizedQuery = normalizeOrderId(searchQuery);
-    const queryLooksLikeOrderId = Boolean(normalizedQuery) && (
-      /\d/.test(normalizedQuery) || /[^a-z\s]/.test(normalizedQuery)
-    );
+    const queryLooksLikeOrderId = Boolean(normalizedQuery) && (/\d/.test(normalizedQuery) || /[^a-z\s]/.test(normalizedQuery));
 
-    return orders.filter((order) => {
-      const idMatch = queryLooksLikeOrderId && normalizedQuery
-        ? normalizeOrderId(order.orderId).includes(normalizedQuery)
-        : false;
-      const customerMatch = !queryLooksLikeOrderId && showCustomerColumn
-        ? normalizeSearchText(order.customerName).includes(q)
-        : false;
-      const matchesSearch = !q ? true : idMatch || customerMatch;
-
-      const matchesStatus = !status ? true : normalizePaymentStatus(order.paymentStatus) === status;
-      return matchesSearch && matchesStatus;
+    // Apply status filter first to work on a deterministic subset
+    const statusFiltered = orders.filter((order) => {
+      return !status ? true : normalizePaymentStatus(order.paymentStatus) === status;
     });
+
+    if (!q) return statusFiltered;
+
+    if (queryLooksLikeOrderId && normalizedQuery) {
+      return statusFiltered.filter((order) => normalizeOrderId(order.orderId).includes(normalizedQuery));
+    }
+
+    // Otherwise search by customer name (only if column is shown)
+    if (showCustomerColumn) {
+      return statusFiltered.filter((order) => normalizeSearchText(order.customerName).includes(q));
+    }
+
+    // Fallback: if customer column hidden and query doesn't look like ID, no results
+    return [];
   }, [orders, searchQuery, statusFilter, showCustomerColumn]);
 
   const pageSubtitle = useMemo(() => {
