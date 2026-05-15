@@ -1890,7 +1890,7 @@ app.get('/api/tickets/form-data', async (req, res) => {
 });
 
 // POST /api/tickets — Create ticket (Admin, Organizer)
-// Trigger 5.2 will block if category quota is full
+// Trigger 5.2 will block create if category quota is full 
 app.post('/api/tickets', authenticateToken, requireAdminOrOrganizer, async (req, res) => {
   const payload = req.body.data || req.body;
   const orderId = (payload.orderId || payload.order_id || '').trim();
