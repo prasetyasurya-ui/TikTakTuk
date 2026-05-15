@@ -27,16 +27,25 @@ const TicketCategoryPage = () => {
 
   const loadData = async () => {
     setIsLoading(true);
-    const [catResult, eventList] = await Promise.all([
-      ticketCategoryApi.getTicketCategories(),
-      fetchEvents()
-    ]);
-    
-    if (catResult.data?.ok) {
-      setCategories(catResult.data.data);
+    try {
+      const [catResult, eventList] = await Promise.all([
+        ticketCategoryApi.getTicketCategories(),
+        fetchEvents(),
+      ]);
+
+      if (catResult.data?.ok) {
+        setCategories(Array.isArray(catResult.data.data) ? catResult.data.data : []);
+      } else {
+        setCategories([]);
+      }
+
+      setEvents((Array.isArray(eventList) ? eventList : []).map((event) => ({
+        id: event.id || event.event_id || '',
+        title: event.title || event.event_title || '',
+      })));
+    } finally {
+      setIsLoading(false);
     }
-    setEvents(eventList);
-    setIsLoading(false);
   };
 
   useEffect(() => {
