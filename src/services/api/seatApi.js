@@ -1,72 +1,87 @@
-import { loadDb } from '../core/mockDb';
+import { apiClient } from '../core/apiClient';
 
-function generateUUID() {
-  return `${Date.now()}-${Math.random().toString(16).slice(2)}`;
+function getAuthHeaders() {
+  const token = localStorage.getItem('token');
+  return token ? { Authorization: `Bearer ${token}` } : {};
 }
 
+// READ : fetch all seats
 export async function fetchSeatsManagementData() {
-  const db = loadDb();
+  try {
+    const response = await apiClient.get('/seats', { headers: getAuthHeaders() });
+    const data = response.data;
 
-  const seats = Array.isArray(db.seat) ? db.seat : [];
-  const venues = Array.isArray(db.venue) ? db.venue : [];
-  const relations = Array.isArray(db.has_relationship) ? db.has_relationship : [];
+    if (data.ok === false) {
+      return { seats: [], venues: [] };
+    }
 
-  const venueMap = new Map(venues.map(v => [v.venue_id, v]));
-  const assignedSeatIds = new Set(relations.map(r => r.seat_id).filter(Boolean));
-
-  const enrichedSeats = seats.map(seat => {
-    const venue = venueMap.get(seat.venue_id);
     return {
-      id: seat.seat_id,
-      venueId: seat.venue_id,
-      venueName: venue?.venue_name || '-',
-      section: seat.section,
-      rowNumber: seat.row_number,
-      seatNumber: seat.seat_number,
-      status: assignedSeatIds.has(seat.seat_id) ? 'TERISI' : 'TERSEDIA'
+      seats: data.seats || [],
+      venues: data.venues || []
     };
-  });
-
-  return {
-    seats: enrichedSeats,
-    venues: venues.map(v => ({ id: v.venue_id, name: v.venue_name }))
-  };
+  } catch (error) {
+    console.error('Error fetching seats:', error);
+    return { seats: [], venues: [] };
+  }
 }
 
+// CREATE : create new seats
 export async function createSeat(payload) {
-  const { venueId, section, rowNumber, seatNumber } = payload;
+  try {
+    const response = await apiClient.post('/seats', {
+      venueId: payload.venueId,
+      section: payload.section,
+      rowNumber: payload.rowNumber,
+      seatNumber: payload.seatNumber
+    }, { headers: getAuthHeaders() });
 
-  if (!venueId || !section || !rowNumber || !seatNumber) {
-    return { ok: false, message: 'Semua field wajib diisi.' };
+    const data = response.data;
+    if (response.status >= 400 || data.ok === false) {
+      return { ok: false, message: data.message || data.error || 'Gagal menambahkan kursi.' };
+    }
+
+    return { ok: true, message: data.message || 'Kursi berhasil ditambahkan.', id: data.data?.seat_id };
+  } catch (error) {
+    console.error('Error creating seat:', error);
+    return { ok: false, message: error.message || 'Terjadi kesalahan saat menambahkan kursi.' };
   }
-
-  // UI-only mock: We pretend it succeeds and return a mock ID
-  const newSeatId = `seat_${generateUUID()}`;
-  return { ok: true, message: 'Kursi berhasil ditambahkan.', id: newSeatId };
 }
 
+// UPDATE : update seat info
 export async function updateSeat(seatId, payload) {
-  const { venueId, section, rowNumber, seatNumber } = payload;
+  try {
+    const response = await apiClient.put(`/seats/${seatId}`, {
+      venueId: payload.venueId,
+      section: payload.section,
+      rowNumber: payload.rowNumber,
+      seatNumber: payload.seatNumber
+    }, { headers: getAuthHeaders() });
 
-  if (!venueId || !section || !rowNumber || !seatNumber) {
-    return { ok: false, message: 'Semua field wajib diisi.' };
+    const data = response.data;
+    if (response.status >= 400 || data.ok === false) {
+      return { ok: false, message: data.message || data.error || 'Gagal memperbarui kursi.' };
+    }
+
+    return { ok: true, message: data.message || 'Data kursi berhasil diperbarui.' };
+  } catch (error) {
+    console.error('Error updating seat:', error);
+    return { ok: false, message: error.message || 'Terjadi kesalahan saat memperbarui kursi.' };
   }
-
-  return { ok: true, message: 'Data kursi berhasil diperbarui.' };
 }
 
+// DELETE : delete seat 
 export async function deleteSeat(seatId) {
-  const db = loadDb();
-  const relations = Array.isArray(db.has_relationship) ? db.has_relationship : [];
+  try {
+    const response = await apiClient.delete(`/seats/${seatId}`, { headers: getAuthHeaders() });
 
-  // SPEC CHECK: Jika seat sudah di-assign ke tiket, tidak bisa dihapus
-  const isAssigned = relations.some(r => r.seat_id === seatId);
-  if (isAssigned) {
-    return {
-      ok: false,
-      message: 'Kursi ini sudah di-assign ke tiket dan tidak dapat dihapus. Hapus atau ubah tiket terlebih dahulu.'
-    };
+    const data = response.data;
+    if (response.status >= 400 || data.ok === false) {
+      return { ok: false, message: data.message || data.error || 'Gagal menghapus kursi.' };
+    }
+
+    return { ok: true, message: data.message || 'Kursi berhasil dihapus.' };
+  } catch (error) {
+    console.error('Error deleting seat:', error);
+    return { ok: false, message: error.message || 'Terjadi kesalahan saat menghapus kursi.' };
   }
-
-  return { ok: true, message: 'Kursi berhasil dihapus.' };
 }
