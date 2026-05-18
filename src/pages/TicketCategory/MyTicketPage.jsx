@@ -7,7 +7,7 @@ import PanelCard from "../../components/ui/PanelCard";
 
 // Services & API
 import { getCurrentSession } from "../../services/api";
-import { fetchOrders } from "../../services/api/ordersApi";
+import { fetchManageTicketsData } from "../../services/api/ticketManagementApi";
 
 const MyTicketsPage = () => {
   const [tickets, setTickets] = useState([]);
@@ -21,61 +21,29 @@ const MyTicketsPage = () => {
         setLoading(true);
         const session = getCurrentSession();
 
-        // Fetch all orders for this user using your existing API function
-        const userOrders = await fetchOrders({
+        const userTickets = await fetchManageTicketsData({
           userRole: session?.userRole,
           userId: session?.userId
         });
 
-        const extractedTickets = [];
+        const normalizedTickets = (Array.isArray(userTickets) ? userTickets : []).map((ticket) => ({
+          id: ticket.ticketCode,
+          eventName: ticket.eventName || 'Unknown Event',
+          status: ticket.status || 'PENDING',
+          category: ticket.categoryName || '-',
+          date: ticket.date || '-',
+          location: ticket.location || '-',
+          price: ticket.price || new Intl.NumberFormat('id-ID', {
+            style: 'currency',
+            currency: 'IDR',
+            maximumFractionDigits: 0
+          }).format(0),
+          orderId: ticket.orderId || '-',
+          seat: ticket.seatLabel || 'Free Seating',
+          customerName: ticket.customerName || 'Customer'
+        }));
 
-        // Loop through each order to extract its tickets
-        userOrders.forEach(order => {
-          // Map payment_status to Ticket Status
-          let uiStatus = 'PENDING';
-          if (order.paymentStatus === 'PAID') uiStatus = 'VALID';
-          if (order.paymentStatus === 'CANCELLED') uiStatus = 'DIBATALKAN';
-
-          // Ensure the order has tickets before looping
-          if (Array.isArray(order.tickets)) {
-            order.tickets.forEach(ticketData => {
-
-              // Format Seat
-              let seatLabel = 'Free Seating';
-              if (ticketData.seat) {
-                seatLabel = `${ticketData.seat.section} ${ticketData.seat.rowNumber}-${ticketData.seat.seatNumber}`;
-              }
-
-              // Format Date
-              let formattedDate = '-';
-              if (ticketData.eventDatetime) {
-                const d = new Date(ticketData.eventDatetime);
-                formattedDate = isNaN(d.getTime())
-                  ? ticketData.eventDatetime
-                  : d.toLocaleString('id-ID', { dateStyle: 'medium', timeStyle: 'short' });
-              }
-
-              extractedTickets.push({
-                id: ticketData.ticketCode,
-                eventName: ticketData.eventTitle || 'Unknown Event',
-                status: uiStatus,
-                category: ticketData.categoryName || '-',
-                date: formattedDate,
-                location: ticketData.venueName || '-',
-                price: new Intl.NumberFormat('id-ID', {
-                  style: 'currency',
-                  currency: 'IDR',
-                  maximumFractionDigits: 0
-                }).format(ticketData.categoryPrice || 0),
-                orderId: order.orderId,
-                seat: seatLabel,
-                customerName: order.customerName || 'Customer'
-              });
-            });
-          }
-        });
-
-        setTickets(extractedTickets);
+        setTickets(normalizedTickets);
       } catch (error) {
         console.error("Failed to load tickets:", error);
       } finally {

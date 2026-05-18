@@ -16,7 +16,7 @@ const AdminForm = () => {
   const [confirmPassword, setConfirmPassword] = useState('');
   const [errors, setErrors] = useState({});
   const [isLoading, setIsLoading] = useState(false); // Tambahan state loading
-  
+
   const [formData, setFormData] = useState({
     full_name: "",
     email: "",
@@ -27,7 +27,7 @@ const AdminForm = () => {
 
   const handleChange = (e) => {
     const { name, value } = e.target;
-    
+
     if (name === 'confirmPassword') {
       setConfirmPassword(value);
       if (value !== formData.password) {
@@ -101,12 +101,6 @@ const AdminForm = () => {
         return;
       }
 
-      localStorage.setItem('isLoggedIn', 'true');
-      localStorage.setItem('userId', result.user?.user_id || '');
-      localStorage.setItem('userRole', 'admin');
-      localStorage.setItem('userName', result.user?.username || normalized.username);
-      localStorage.setItem('username', result.user?.username || normalized.username);
-      
       alert("Registrasi Berhasil!");
       navigate('/login');
     } catch (err) {
@@ -223,12 +217,12 @@ const AdminForm = () => {
             {errors.confirmPassword && <p className="text-red-500 text-xs">{errors.confirmPassword}</p>}
           </div>
 
-          <button 
+          <button
             type="submit"
             disabled={isLoading}
             className={`w-full text-white font-semibold py-3 rounded-lg transition-all active:scale-[0.98] mt-4 flex justify-center items-center gap-2
-              ${isLoading 
-                ? 'bg-blue-400 cursor-not-allowed shadow-none' 
+              ${isLoading
+                ? 'bg-blue-400 cursor-not-allowed shadow-none'
                 : 'bg-blue-600 hover:bg-blue-700 shadow-md shadow-blue-200'
               }`}
           >
@@ -248,7 +242,7 @@ const AdminForm = () => {
 
         <div className="mt-6 pt-4 border-t border-slate-100 text-center">
           <p className="text-sm text-slate-600">
-            Sudah punya akun? <a href="/" className={`text-blue-600 font-semibold hover:underline ${isLoading ? 'pointer-events-none opacity-50' : ''}`}>Login</a>
+            Sudah punya akun? <a href="/login" className={`text-blue-600 font-semibold hover:underline ${isLoading ? 'pointer-events-none opacity-50' : ''}`}>Login</a>
           </p>
         </div>
       </div>

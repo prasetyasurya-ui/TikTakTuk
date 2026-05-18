@@ -131,7 +131,7 @@ export function handleMockRequest(method, url, options = {}) {
     );
   }
 
-  
+
   if (method === 'POST' && url === '/events/create') {
     return {
       ok: true,
@@ -139,7 +139,7 @@ export function handleMockRequest(method, url, options = {}) {
     };
   }
 
-  
+
   if (method === 'POST' && url === '/events/edit') {
     return {
       ok: true,

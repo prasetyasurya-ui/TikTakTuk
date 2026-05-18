@@ -5,10 +5,10 @@ import { fetchEvents } from '../../services/api';
 
 const EventPage = () => {
   const [events, setEvents] = useState([]);
-  const [venues, setVenues] = useState({});
   
   const [searchQuery, setSearchQuery] = useState("");
   const [selectedVenue, setSelectedVenue] = useState("Semua Venue");
+  const [selectedArtist, setSelectedArtist] = useState("Semua Artis");
   const [isLoading, setIsLoading] = useState(true); // Tambahan state loading
 
   useEffect(() => {
@@ -21,17 +21,22 @@ const EventPage = () => {
       const transformed = (data || []).map((event, idx) => {
         const date = new Date(event.event_datetime);
         const time = date.toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' });
+        const categories = Array.isArray(event.categories) ? event.categories : [];
+        const artists = Array.isArray(event.artists) ? event.artists : [];
+        const startPrice = categories.length > 0
+          ? Math.min(...categories.map((category) => Number(category.price) || 0))
+          : 0;
         
         return {
           id: event.event_id,
           title: event.event_title || 'Event tanpa judul',
           date: event.event_datetime,
-          venue: venues[event.venue_id] || `Venue ${event.venue_id?.slice(0, 8)}...` || 'Venue tidak diketahui',
-          artists: [],
-          categories: ['Regular'],
+          venue: event.venue_name || `Venue ${event.venue_id?.slice(0, 8)}...` || 'Venue tidak diketahui',
+          artists: artists.map((artist) => artist.name).filter(Boolean),
+          categories: categories.map((category) => category.category_name).filter(Boolean),
           gradient: gradients[idx % gradients.length],
           time: time,
-          startPrice: 150000 + (idx * 50000)
+          startPrice,
         };
       });
       
@@ -40,7 +45,7 @@ const EventPage = () => {
     };
 
     loadEvents();
-  }, [venues]);
+  }, []);
 
   const filteredEvents = useMemo(() => {
     if (!events || events.length === 0) return [];
@@ -52,9 +57,10 @@ const EventPage = () => {
       const matchesSearch = titleSafe.toLowerCase().includes(searchQuery.toLowerCase()) ||
                             artistsSafe.some(a => (a || '').toLowerCase().includes(searchQuery.toLowerCase()));
       const matchesVenue = selectedVenue === "Semua Venue" || event.venue === selectedVenue;
-      return matchesSearch && matchesVenue;
+      const matchesArtist = selectedArtist === "Semua Artis" || artistsSafe.includes(selectedArtist);
+      return matchesSearch && matchesVenue && matchesArtist;
     });
-  }, [events, searchQuery, selectedVenue]);
+  }, [events, searchQuery, selectedVenue, selectedArtist]);
 
   return (
     <div className="min-h-screen bg-slate-50 text-slate-900">
@@ -85,6 +91,16 @@ const EventPage = () => {
           >
             <option>Semua Venue</option>
             {events && events.length > 0 && Array.from(new Set(events.filter(e => e && e.venue).map(e => e.venue))).map(v => <option key={v} value={v}>{v}</option>)}
+          </select>
+          <select
+            className="px-4 py-2.5 rounded-xl border border-slate-200 bg-white outline-none text-sm cursor-pointer md:w-48 shadow-sm"
+            value={selectedArtist}
+            onChange={(e) => setSelectedArtist(e.target.value)}
+          >
+            <option>Semua Artis</option>
+            {events && events.length > 0 && Array.from(new Set(events.flatMap((event) => event.artists || []).filter(Boolean))).map((artist) => (
+              <option key={artist} value={artist}>{artist}</option>
+            ))}
           </select>
         </div>
 
@@ -170,7 +186,9 @@ const EventPage = () => {
                   <div className="mt-auto pt-3 border-t border-slate-50 flex items-center justify-between">
                     <div>
                       <span className="text-[9px] text-slate-400 font-bold uppercase block tracking-tighter">Mulai Dari</span>
-                      <span className="text-sm font-black text-slate-900 leading-none">Rp {event.startPrice.toLocaleString('id-ID')}</span>
+                      <span className="text-sm font-black text-slate-900 leading-none">
+                        {event.startPrice > 0 ? `Rp ${event.startPrice.toLocaleString('id-ID')}` : '-'}
+                      </span>
                     </div>
                     <button 
                       onClick={() => window.location.href = `/checkout/${event.id}`}

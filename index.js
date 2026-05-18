@@ -19,23 +19,48 @@ async function resolveOrganizerId(inputId) {
   return null;
 }
 
-async function syncEventArtists(eventId, artists) {
+async function syncEventArtists(eventId, artists, db = query) {
   const artistsTableExists = await tableExists('TIKTAKTUK', 'ARTIST');
   const eventArtistTableExists = await tableExists('TIKTAKTUK', 'EVENT_ARTIST');
   if (!artistsTableExists || !eventArtistTableExists || !eventId) return;
-  await query('DELETE FROM TIKTAKTUK.EVENT_ARTIST WHERE event_id = $1', [eventId]);
+  await db.query('DELETE FROM TIKTAKTUK.EVENT_ARTIST WHERE event_id = $1', [eventId]);
   const candidateIds = [...new Set((Array.isArray(artists) ? artists : [])
     .map((artistId) => String(artistId || '').trim())
     .filter((artistId) => isUuidLike(artistId)))];
   if (candidateIds.length === 0) return;
-  const validArtists = await query(
+  const validArtists = await db.query(
     'SELECT artist_id::text AS artist_id FROM TIKTAKTUK.ARTIST WHERE artist_id::text = ANY($1::text[])',
     [candidateIds]
   );
   for (const row of validArtists.rows) {
-    await query(
+    await db.query(
       'INSERT INTO TIKTAKTUK.EVENT_ARTIST (event_id, artist_id, role) VALUES ($1,$2,$3) ON CONFLICT (event_id, artist_id) DO UPDATE SET role = EXCLUDED.role',
       [eventId, row.artist_id, 'Performer']
+    );
+  }
+}
+
+async function syncEventTicketCategories(eventId, categories, db = query) {
+  if (!eventId) return;
+
+  const normalizedCategories = (Array.isArray(categories) ? categories : [])
+    .map((category) => ({
+      name: String(
+        category?.category_name
+        || category?.name
+        || ''
+      ).trim(),
+      quota: Number(category?.quota),
+      price: Number(category?.price),
+    }))
+    .filter((category) => category.name && Number.isInteger(category.quota) && category.quota > 0 && !Number.isNaN(category.price) && category.price >= 0);
+
+  await db.query('DELETE FROM TIKTAKTUK.TICKET_CATEGORY WHERE tevent_id = $1', [eventId]);
+
+  for (const category of normalizedCategories) {
+    await db.query(
+      'INSERT INTO TIKTAKTUK.TICKET_CATEGORY (category_name, quota, price, tevent_id) VALUES ($1, $2, $3, $4)',
+      [category.name, category.quota, category.price, eventId]
     );
   }
 }
@@ -90,7 +115,7 @@ app.get('/api/venues', async (req, res) => {
   }
 });
 
-app.post('/api/venues', async (req, res) => {
+app.post('/api/venues', authenticateToken, requireAdminOrOrganizer, async (req, res) => {
   const { venue_name, capacity, address, city, jenis_seating } = req.body;
   if (!venue_name || !city) return res.status(400).json({ error: 'Missing fields' });
 
@@ -112,7 +137,7 @@ app.get('/api/venues/:id', async (req, res) => {
   }
 });
 
-app.delete('/api/venues/:id', async (req, res) => {
+app.delete('/api/venues/:id', authenticateToken, requireAdminOrOrganizer, async (req, res) => {
   try {
     const v = await query('SELECT venue_id, venue_name FROM TIKTAKTUK.VENUE WHERE venue_id = $1', [req.params.id]);
     if (v.rowCount === 0) return res.status(404).json({ error: 'Venue not found' });
@@ -129,35 +154,119 @@ app.get('/api/events', async (req, res) => {
   try {
     const descriptionExists = await columnExists('TIKTAKTUK', 'EVENT', 'description');
     const eventColumns = descriptionExists
-      ? 'event_id, event_title, event_datetime, venue_id, organizer_id, description'
-      : 'event_id, event_title, event_datetime, venue_id, organizer_id';
-    const e = await query(`SELECT ${eventColumns} FROM TIKTAKTUK.EVENT ORDER BY event_datetime`);
-    res.json({ events: e.rows });
+      ? 'e.event_id, e.event_title, e.event_datetime, e.venue_id, e.organizer_id, e.description'
+      : 'e.event_id, e.event_title, e.event_datetime, e.venue_id, e.organizer_id';
+
+    const eventsRes = await query(
+      `
+        SELECT ${eventColumns}, v.venue_name, v.city
+        FROM TIKTAKTUK.EVENT e
+        LEFT JOIN TIKTAKTUK.VENUE v ON v.venue_id = e.venue_id
+        ORDER BY e.event_datetime
+      `
+    );
+
+    const eventIds = eventsRes.rows.map((row) => row.event_id).filter(Boolean);
+
+    let categoriesByEventId = new Map();
+    if (eventIds.length > 0) {
+      const categoriesRes = await query(
+        `
+          SELECT category_id, category_name, quota, price, tevent_id
+          FROM TIKTAKTUK.TICKET_CATEGORY
+          WHERE tevent_id::text = ANY($1::text[])
+          ORDER BY price ASC, category_name ASC
+        `,
+        [eventIds]
+      );
+
+      categoriesByEventId = categoriesRes.rows.reduce((map, row) => {
+        const key = row.tevent_id;
+        if (!map.has(key)) map.set(key, []);
+        map.get(key).push({
+          category_id: row.category_id,
+          category_name: row.category_name,
+          quota: Number(row.quota) || 0,
+          price: Number(row.price) || 0,
+        });
+        return map;
+      }, new Map());
+    }
+
+    const eventArtistExists = await tableExists('TIKTAKTUK', 'EVENT_ARTIST');
+    const artistsTableExists = await tableExists('TIKTAKTUK', 'ARTIST');
+    let artistsByEventId = new Map();
+    if (eventArtistExists && artistsTableExists && eventIds.length > 0) {
+      const artistsRes = await query(
+        `
+          SELECT ea.event_id, a.artist_id, a.name, ea.role
+          FROM TIKTAKTUK.EVENT_ARTIST ea
+          JOIN TIKTAKTUK.ARTIST a ON a.artist_id = ea.artist_id
+          WHERE ea.event_id::text = ANY($1::text[])
+          ORDER BY a.name ASC
+        `,
+        [eventIds]
+      );
+
+      artistsByEventId = artistsRes.rows.reduce((map, row) => {
+        const key = row.event_id;
+        if (!map.has(key)) map.set(key, []);
+        map.get(key).push({
+          artist_id: row.artist_id,
+          name: row.name,
+          role: row.role || 'Performer',
+        });
+        return map;
+      }, new Map());
+    }
+
+    res.json({
+      events: eventsRes.rows.map((row) => ({
+        ...row,
+        categories: categoriesByEventId.get(row.event_id) || [],
+        artists: artistsByEventId.get(row.event_id) || [],
+      })),
+    });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
 });
 
-app.post('/api/events', async (req, res) => {
-  const { event_title, event_datetime, venue_id, organizer_id, description, artists } = req.body;
+app.post('/api/events', authenticateToken, requireAdminOrOrganizer, async (req, res) => {
+  const { event_title, event_datetime, venue_id, organizer_id, description, artists, categories } = req.body;
   if (!event_title || !event_datetime || !venue_id || !organizer_id) return res.status(400).json({ error: 'Missing fields' });
 
+  const client = await poolInstance.connect();
   try {
-    const v = await query('SELECT venue_id FROM TIKTAKTUK.VENUE WHERE venue_id = $1', [venue_id]);
-    if (v.rowCount === 0) return res.status(400).json({ error: `Venue with id ${venue_id} not found` });
+    await client.query('BEGIN');
+
+    const v = await client.query('SELECT venue_id FROM TIKTAKTUK.VENUE WHERE venue_id = $1', [venue_id]);
+    if (v.rowCount === 0) {
+      await client.query('ROLLBACK');
+      return res.status(400).json({ error: `Venue with id ${venue_id} not found` });
+    }
 
     const normalizedOrganizerId = await resolveOrganizerId(organizer_id);
-    if (!normalizedOrganizerId) return res.status(400).json({ error: `Organizer with id ${organizer_id} not found` });
+    if (!normalizedOrganizerId) {
+      await client.query('ROLLBACK');
+      return res.status(400).json({ error: `Organizer with id ${organizer_id} not found` });
+    }
 
     const descriptionExists = await columnExists('TIKTAKTUK', 'EVENT', 'description');
     const ins = descriptionExists
-      ? await query('INSERT INTO TIKTAKTUK.EVENT (event_title, event_datetime, venue_id, organizer_id, description) VALUES ($1,$2,$3,$4,$5) RETURNING *', [event_title, event_datetime, venue_id, normalizedOrganizerId, description || null])
-      : await query('INSERT INTO TIKTAKTUK.EVENT (event_title, event_datetime, venue_id, organizer_id) VALUES ($1,$2,$3,$4) RETURNING *', [event_title, event_datetime, venue_id, normalizedOrganizerId]);
+      ? await client.query('INSERT INTO TIKTAKTUK.EVENT (event_title, event_datetime, venue_id, organizer_id, description) VALUES ($1,$2,$3,$4,$5) RETURNING *', [event_title, event_datetime, venue_id, normalizedOrganizerId, description || null])
+      : await client.query('INSERT INTO TIKTAKTUK.EVENT (event_title, event_datetime, venue_id, organizer_id) VALUES ($1,$2,$3,$4) RETURNING *', [event_title, event_datetime, venue_id, normalizedOrganizerId]);
 
-    await syncEventArtists(ins.rows[0]?.event_id, artists);
+    await syncEventArtists(ins.rows[0]?.event_id, artists, client);
+    await syncEventTicketCategories(ins.rows[0]?.event_id, categories, client);
+
+    await client.query('COMMIT');
     res.status(201).json({ event: ins.rows[0] });
   } catch (err) {
+    await client.query('ROLLBACK');
     res.status(500).json({ error: err.message });
+  } finally {
+    client.release();
   }
 });
 
@@ -178,6 +287,10 @@ app.get('/api/events/management', async (req, res) => {
       ? await query('SELECT artist_id, name, genre FROM TIKTAKTUK.ARTIST ORDER BY name')
       : { rows: [] };
 
+    const organizersRes = userRole === 'admin'
+      ? await query('SELECT organizer_id, organizer_name FROM TIKTAKTUK.ORGANIZER ORDER BY organizer_name')
+      : { rows: [] };
+
     const eventDescriptionSelect = descriptionExists ? 'e.description,' : '';
     const eventDescriptionGroupBy = descriptionExists ? 'e.description,' : '';
 
@@ -189,6 +302,7 @@ app.get('/api/events/management', async (req, res) => {
         return res.json({
           venues: venuesRes.rows,
           artists: artistsRes.rows,
+          organizers: organizersRes.rows,
           events: [],
         });
       }
@@ -248,10 +362,40 @@ app.get('/api/events/management', async (req, res) => {
       eventFilterParams
     );
 
+    const eventIds = eventsRes.rows.map((row) => row.event_id).filter(Boolean);
+    let categoriesByEventId = new Map();
+    if (eventIds.length > 0) {
+      const categoriesRes = await query(
+        `
+          SELECT category_id, category_name, quota, price, tevent_id
+          FROM TIKTAKTUK.TICKET_CATEGORY
+          WHERE tevent_id::text = ANY($1::text[])
+          ORDER BY price ASC, category_name ASC
+        `,
+        [eventIds]
+      );
+
+      categoriesByEventId = categoriesRes.rows.reduce((map, row) => {
+        const key = row.tevent_id;
+        if (!map.has(key)) map.set(key, []);
+        map.get(key).push({
+          category_id: row.category_id,
+          category_name: row.category_name,
+          quota: Number(row.quota) || 0,
+          price: Number(row.price) || 0,
+        });
+        return map;
+      }, new Map());
+    }
+
     res.json({
       venues: venuesRes.rows,
       artists: artistsRes.rows,
-      events: eventsRes.rows,
+      organizers: organizersRes.rows,
+      events: eventsRes.rows.map((row) => ({
+        ...row,
+        categories: categoriesByEventId.get(row.event_id) || [],
+      })),
     });
   } catch (err) {
     res.status(500).json({ error: err.message });
@@ -272,29 +416,47 @@ app.get('/api/events/:id', async (req, res) => {
   }
 });
 
-app.put('/api/events/:id', async (req, res) => {
-  const { event_title, event_datetime, venue_id, organizer_id, description, artists } = req.body;
+app.put('/api/events/:id', authenticateToken, requireAdminOrOrganizer, async (req, res) => {
+  const { event_title, event_datetime, venue_id, organizer_id, description, artists, categories } = req.body;
   if (!event_title || !event_datetime || !venue_id) return res.status(400).json({ error: 'Missing required fields' });
 
+  const client = await poolInstance.connect();
   try {
-    const e = await query('SELECT event_id FROM TIKTAKTUK.EVENT WHERE event_id = $1', [req.params.id]);
-    if (e.rowCount === 0) return res.status(404).json({ error: 'Event not found' });
+    await client.query('BEGIN');
 
-    const v = await query('SELECT venue_id FROM TIKTAKTUK.VENUE WHERE venue_id = $1', [venue_id]);
-    if (v.rowCount === 0) return res.status(400).json({ error: `Venue with id ${venue_id} not found` });
+    const e = await client.query('SELECT event_id FROM TIKTAKTUK.EVENT WHERE event_id = $1', [req.params.id]);
+    if (e.rowCount === 0) {
+      await client.query('ROLLBACK');
+      return res.status(404).json({ error: 'Event not found' });
+    }
+
+    const v = await client.query('SELECT venue_id FROM TIKTAKTUK.VENUE WHERE venue_id = $1', [venue_id]);
+    if (v.rowCount === 0) {
+      await client.query('ROLLBACK');
+      return res.status(400).json({ error: `Venue with id ${venue_id} not found` });
+    }
 
     const normalizedOrganizerId = await resolveOrganizerId(organizer_id);
-    if (!normalizedOrganizerId) return res.status(400).json({ error: `Organizer with id ${organizer_id} not found` });
+    if (!normalizedOrganizerId) {
+      await client.query('ROLLBACK');
+      return res.status(400).json({ error: `Organizer with id ${organizer_id} not found` });
+    }
 
     const descriptionExists = await columnExists('TIKTAKTUK', 'EVENT', 'description');
     const upd = descriptionExists
-      ? await query('UPDATE TIKTAKTUK.EVENT SET event_title = $1, event_datetime = $2, venue_id = $3, organizer_id = $4, description = $5 WHERE event_id = $6 RETURNING *', [event_title, event_datetime, venue_id, normalizedOrganizerId, description, req.params.id])
-      : await query('UPDATE TIKTAKTUK.EVENT SET event_title = $1, event_datetime = $2, venue_id = $3, organizer_id = $4 WHERE event_id = $5 RETURNING *', [event_title, event_datetime, venue_id, normalizedOrganizerId, req.params.id]);
+      ? await client.query('UPDATE TIKTAKTUK.EVENT SET event_title = $1, event_datetime = $2, venue_id = $3, organizer_id = $4, description = $5 WHERE event_id = $6 RETURNING *', [event_title, event_datetime, venue_id, normalizedOrganizerId, description, req.params.id])
+      : await client.query('UPDATE TIKTAKTUK.EVENT SET event_title = $1, event_datetime = $2, venue_id = $3, organizer_id = $4 WHERE event_id = $5 RETURNING *', [event_title, event_datetime, venue_id, normalizedOrganizerId, req.params.id]);
 
-    await syncEventArtists(req.params.id, artists);
+    await syncEventArtists(req.params.id, artists, client);
+    await syncEventTicketCategories(req.params.id, categories, client);
+
+    await client.query('COMMIT');
     res.json({ event: upd.rows[0] });
   } catch (err) {
+    await client.query('ROLLBACK');
     res.status(500).json({ error: err.message });
+  } finally {
+    client.release();
   }
 });
 
@@ -302,7 +464,7 @@ app.delete('/api/events/:id', async (req, res) => {
   return res.status(405).json({ error: 'Deleting events is disabled' });
 });
 
-app.put('/api/venues/:id', async (req, res) => {
+app.put('/api/venues/:id', authenticateToken, requireAdminOrOrganizer, async (req, res) => {
   const { venue_name, capacity, address, city, jenis_seating } = req.body;
   if (!venue_name || !city) return res.status(400).json({ error: 'Missing required fields' });
 
@@ -351,10 +513,18 @@ function requireAdminOrOrganizer(req, res, next) {
   next();
 }
 
+function requireCustomer(req, res, next) {
+  const roles = (req.user.roles || []).map(r => r.toLowerCase());
+  if (!roles.includes('customer')) {
+    return res.status(403).json({ ok: false, message: 'Hanya Customer yang dapat melakukan aksi ini.' });
+  }
+  next();
+}
+
 // ─── ARTIST endpoints ────────────────────────────────────────────────────────
 
-// READ — all logged-in users (Admin, Organizer, Customer) can view artist list
-app.get('/api/artists', authenticateToken, async (req, res) => {
+// READ — public artist list
+app.get('/api/artists', async (req, res) => {
   try {
     const eventArtistExists = await tableExists('TIKTAKTUK', 'EVENT_ARTIST');
 
@@ -694,23 +864,35 @@ app.get('/api/checkout/:eventId', async (req, res) => {
     // Fetch seats if reserved seating
     let seats = [];
     if (seatingType === 'RESERVED_SEATING') {
-      const seatRes = await query('SELECT * FROM TIKTAKTUK.SEAT WHERE venue_id = $1 ORDER BY seat_number', [event.venue_id]);
-      // Get used seat IDs
-      const hasSeatId = await columnExists('TIKTAKTUK', 'HAS_RELATIONSHIP', 'seat_id');
-      const hrSeatCol = hasSeatId ? 'seat_id' : 'customer_id';
-
-      const usedRes = await query(
-        `SELECT hr.ticket_id, s.seat_id FROM TIKTAKTUK.HAS_RELATIONSHIP hr
-         JOIN TIKTAKTUK.SEAT s ON s.seat_id::text = hr.${hrSeatCol}::text
-         WHERE s.venue_id = $1`,
+      const hasSectionCol = await columnExists('TIKTAKTUK', 'SEAT', 'section');
+      const hasRowNumberCol = await columnExists('TIKTAKTUK', 'SEAT', 'row_number');
+      const sectionCol = hasSectionCol ? 'section' : 'zone';
+      const rowNumberCol = hasRowNumberCol ? 'row_number' : 'seat_number';
+      const seatRes = await query(
+        `SELECT seat_id, ${sectionCol} AS section, ${rowNumberCol} AS row_number, seat_number
+         FROM TIKTAKTUK.SEAT
+         WHERE venue_id = $1
+         ORDER BY ${sectionCol}, ${rowNumberCol}, seat_number`,
         [event.venue_id]
       );
-      const usedSeatIds = new Set(usedRes.rows.map(r => r.seat_id));
+      // Get used seat IDs
+      const hasSeatId = await columnExists('TIKTAKTUK', 'HAS_RELATIONSHIP', 'seat_id');
+      let usedSeatIds = new Set();
+      if (hasSeatId) {
+        const usedRes = await query(
+          `SELECT hr.ticket_id, s.seat_id FROM TIKTAKTUK.HAS_RELATIONSHIP hr
+           JOIN TIKTAKTUK.SEAT s ON s.seat_id = hr.seat_id
+           WHERE s.venue_id = $1`,
+          [event.venue_id]
+        );
+        usedSeatIds = new Set(usedRes.rows.map(r => r.seat_id));
+      }
 
       seats = seatRes.rows.map(seat => ({
         seatId: seat.seat_id,
-        label: seat.seat_number,
-        section: seat.zone,
+        label: `${seat.section || '-'}-${seat.row_number || '-'}-${seat.seat_number}`,
+        section: seat.section || '-',
+        rowNumber: seat.row_number || '-',
         seatNumber: seat.seat_number,
         isAvailable: !usedSeatIds.has(seat.seat_id),
       }));
@@ -785,7 +967,7 @@ app.get('/api/orders', async (req, res) => {
     } else if (role === 'organizer') {
       const orgRes = await query('SELECT organizer_id FROM TIKTAKTUK.ORGANIZER WHERE user_id = $1', [userId]);
       if (orgRes.rowCount === 0) return res.json({ orders: [] });
-      filterClause = `WHERE o.event_id IN (SELECT event_id FROM TIKTAKTUK.EVENT WHERE organizer_id = $1)`;
+      filterClause = 'WHERE e.organizer_id = $1';
       filterParams = [orgRes.rows[0].organizer_id];
     }
     // admin: no filter
@@ -835,7 +1017,7 @@ app.get('/api/orders', async (req, res) => {
 });
 
 // POST /api/orders - Create order
-app.post('/api/orders', async (req, res) => {
+app.post('/api/orders', authenticateToken, requireCustomer, async (req, res) => {
   // 1. Ambil koneksi dari pool di awal untuk transaksi
   const client = await poolInstance.connect();
 
@@ -844,7 +1026,11 @@ app.post('/api/orders', async (req, res) => {
 
     // 2. Destructuring input (Hanya sekali di awal)
     // Catatan: userId diambil dari req.body atau req.user tergantung middleware Anda
-    const { eventId, categoryId, quantity, promoCode, userId } = req.body;
+    const { eventId, categoryId, quantity, promoCode } = req.body;
+    const userId = req.user?.user_id || req.body.userId;
+    const seatIds = Array.isArray(req.body.seatIds)
+      ? req.body.seatIds.map((seatId) => String(seatId || '').trim()).filter(Boolean)
+      : [];
 
     // 3. Validasi Dasar Input
     if (!eventId || !categoryId) {
@@ -878,6 +1064,55 @@ app.post('/api/orders', async (req, res) => {
       throw new Error('Kategori tiket tidak valid untuk event ini.');
     }
     const { price: unitPrice, quota, category_name } = catRes.rows[0];
+
+    const eventRes = await client.query(
+      `
+        SELECT
+          e.event_id,
+          e.venue_id,
+          COALESCE(v.jenis_seating, 'FREE_SEATING') AS seating_type
+        FROM TIKTAKTUK.EVENT e
+        JOIN TIKTAKTUK.VENUE v ON v.venue_id = e.venue_id
+        WHERE e.event_id = $1
+      `,
+      [eventId]
+    );
+    if (eventRes.rowCount === 0) {
+      throw new Error('Event tidak ditemukan.');
+    }
+
+    const eventRow = eventRes.rows[0];
+    const usesReservedSeating = String(eventRow.seating_type || '').toUpperCase() === 'RESERVED_SEATING';
+
+    if (seatIds.length > 0 && seatIds.length !== qty) {
+      throw new Error('Jika memilih kursi, jumlah kursi harus sama dengan jumlah tiket.');
+    }
+
+    if (seatIds.length !== new Set(seatIds).size) {
+      throw new Error('Kursi yang dipilih tidak boleh duplikat.');
+    }
+
+    if (seatIds.length > 0) {
+      if (!usesReservedSeating) {
+        throw new Error('Event ini tidak menggunakan reserved seating.');
+      }
+
+      const seatRes = await client.query(
+        `
+          SELECT s.seat_id
+          FROM TIKTAKTUK.SEAT s
+          LEFT JOIN TIKTAKTUK.HAS_RELATIONSHIP hr ON hr.seat_id = s.seat_id
+          WHERE s.venue_id = $1
+            AND s.seat_id::text = ANY($2::text[])
+            AND hr.ticket_id IS NULL
+        `,
+        [eventRow.venue_id, seatIds]
+      );
+
+      if (seatRes.rowCount !== seatIds.length) {
+        throw new Error('Sebagian kursi yang dipilih tidak tersedia untuk event ini.');
+      }
+    }
 
     // 6. Validasi Kuota (Menggunakan Join untuk menghitung tiket terjual)
     const hasCategoryCol = await columnExists('TIKTAKTUK', 'TICKET', 'category_id');
@@ -951,19 +1186,31 @@ app.post('/api/orders', async (req, res) => {
     const hasOrderIdCol = await columnExists('TIKTAKTUK', 'TICKET', 'order_id');
     const tktOrderCol = hasOrderIdCol ? 'order_id' : 'torder_id';
 
+    const createdTicketIds = [];
     for (let i = 0; i < qty; i++) {
       const ticketCode = `TKT-${Date.now()}-${Math.random().toString(36).substring(2, 8).toUpperCase()}`;
       if (hasStatusCol) {
-        await client.query(
+        const ticketInsertRes = await client.query(
           `INSERT INTO TIKTAKTUK.TICKET (ticket_code, status, issued_at, ${tktOrderCol}, ${tktFkCol})
-           VALUES ($1, 'ACTIVE', NOW(), $2, $3)`,
+           VALUES ($1, 'ACTIVE', NOW(), $2, $3) RETURNING ticket_id`,
           [ticketCode, orderId, categoryId]
         );
+        createdTicketIds.push(ticketInsertRes.rows[0].ticket_id);
       } else {
-        await client.query(
+        const ticketInsertRes = await client.query(
           `INSERT INTO TIKTAKTUK.TICKET (ticket_code, ${tktOrderCol}, ${tktFkCol})
-           VALUES ($1, $2, $3)`,
+           VALUES ($1, $2, $3) RETURNING ticket_id`,
           [ticketCode, orderId, categoryId]
+        );
+        createdTicketIds.push(ticketInsertRes.rows[0].ticket_id);
+      }
+    }
+
+    if (seatIds.length > 0) {
+      for (let i = 0; i < seatIds.length; i++) {
+        await client.query(
+          'INSERT INTO TIKTAKTUK.HAS_RELATIONSHIP (seat_id, ticket_id) VALUES ($1, $2)',
+          [seatIds[i], createdTicketIds[i]]
         );
       }
     }
@@ -995,7 +1242,7 @@ app.post('/api/orders', async (req, res) => {
 });
 
 // PUT /api/orders/:id - Update order payment status (Admin only)
-app.put('/api/orders/:id', async (req, res) => {
+app.put('/api/orders/:id', authenticateToken, requireAdmin, async (req, res) => {
   try {
     const { paymentStatus } = req.body;
     const validStatuses = ['PENDING', 'PAID', 'CANCELLED'];
@@ -1026,7 +1273,7 @@ app.put('/api/orders/:id', async (req, res) => {
 });
 
 // DELETE /api/orders/:id - Delete order (Admin only)
-app.delete('/api/orders/:id', async (req, res) => {
+app.delete('/api/orders/:id', authenticateToken, requireAdmin, async (req, res) => {
   const client = await poolInstance.connect();
   try {
     await client.query('BEGIN');
@@ -1246,9 +1493,6 @@ app.get('/api/seats', async (req, res) => {
     const hasRowNumberCol = await columnExists('TIKTAKTUK', 'SEAT', 'row_number');
 
     const sectionCol = hasSectionCol ? 'section' : 'zone';
-    const rowNumberCol = hasRowNumberCol ? 'row_number' : 'seat_number';
-
-    
     const hasSeatIdInHR = await columnExists('TIKTAKTUK', 'HAS_RELATIONSHIP', 'seat_id');
 
     let assignedSeatIds = new Set();
@@ -1591,48 +1835,61 @@ app.put('/api/tickets/:id', authenticateToken, requireAdmin, async (req, res) =>
     return res.status(400).json({ ok: false, message: 'Status tiket tidak valid.' });
   }
 
+  const client = await poolInstance.connect();
   try {
+    await client.query('BEGIN');
+
     // Verify ticket exists
-    const existing = await query('SELECT ticket_id FROM TIKTAKTUK.TICKET WHERE ticket_id = $1', [id]);
+    const existing = await client.query('SELECT ticket_id FROM TIKTAKTUK.TICKET WHERE ticket_id = $1', [id]);
     if (existing.rowCount === 0) {
+      await client.query('ROLLBACK');
       return res.status(404).json({ ok: false, message: 'Tiket tidak ditemukan.' });
     }
 
     // Update status if column exists
     const hasStatusCol = await columnExists('TIKTAKTUK', 'TICKET', 'status');
     if (hasStatusCol && newStatus) {
-      await query('UPDATE TIKTAKTUK.TICKET SET status = $1 WHERE ticket_id = $2', [newStatus, id]);
+      await client.query('UPDATE TIKTAKTUK.TICKET SET status = $1 WHERE ticket_id = $2', [newStatus, id]);
     }
 
     // Update seat assignment in HAS_RELATIONSHIP
     const hasSeatIdInHR = await columnExists('TIKTAKTUK', 'HAS_RELATIONSHIP', 'seat_id');
     if (hasSeatIdInHR) {
-      // Remove existing seat assignment for this ticket
-      await query('DELETE FROM TIKTAKTUK.HAS_RELATIONSHIP WHERE ticket_id = $1', [id]);
-
-      // Assign new seat if provided
       if (newSeatId) {
-        // Verify seat exists
-        const seatRes = await query('SELECT seat_id FROM TIKTAKTUK.SEAT WHERE seat_id = $1', [newSeatId]);
+        const seatRes = await client.query('SELECT seat_id FROM TIKTAKTUK.SEAT WHERE seat_id = $1', [newSeatId]);
         if (seatRes.rowCount === 0) {
+          await client.query('ROLLBACK');
           return res.status(400).json({ ok: false, message: 'Kursi tidak ditemukan.' });
         }
 
-        // Check if seat is already assigned to another ticket
-        const alreadyAssigned = await query('SELECT ticket_id FROM TIKTAKTUK.HAS_RELATIONSHIP WHERE seat_id = $1', [newSeatId]);
+        const alreadyAssigned = await client.query(
+          'SELECT ticket_id FROM TIKTAKTUK.HAS_RELATIONSHIP WHERE seat_id = $1 AND ticket_id <> $2',
+          [newSeatId, id]
+        );
         if (alreadyAssigned.rowCount > 0) {
+          await client.query('ROLLBACK');
           return res.status(400).json({ ok: false, message: 'Kursi sudah di-assign ke tiket lain.' });
         }
+      }
 
-        await query('INSERT INTO TIKTAKTUK.HAS_RELATIONSHIP (seat_id, ticket_id) VALUES ($1, $2)', [newSeatId, id]);
+      // Remove existing seat assignment for this ticket
+      await client.query('DELETE FROM TIKTAKTUK.HAS_RELATIONSHIP WHERE ticket_id = $1', [id]);
+
+      // Assign new seat if provided
+      if (newSeatId) {
+        await client.query('INSERT INTO TIKTAKTUK.HAS_RELATIONSHIP (seat_id, ticket_id) VALUES ($1, $2)', [newSeatId, id]);
       }
     }
 
+    await client.query('COMMIT');
     res.json({ ok: true, message: 'Tiket berhasil diperbarui.' });
   } catch (err) {
+    await client.query('ROLLBACK');
     const msg = err.message || '';
     const match = msg.match(/ERROR:\s*(.*)/);
     res.status(400).json({ ok: false, message: match ? match[1].trim() : msg });
+  } finally {
+    client.release();
   }
 });
 
