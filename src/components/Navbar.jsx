@@ -5,12 +5,9 @@ import NavLinkItem from './navigation/NavLinkItem';
 import { useAuth } from '../contexts/AuthContext';
 
 const NAV_LINKS = {
-  guest: [
-    { to: '/explore', label: 'Jelajahi Event', accessible: true },
-    { to: '/promotion', label: 'Promosi', accessible: true },
-    { to: '/ticket-categories', label: 'Kategori Tiket', accessible: true },
-  ],
+  guest: [],
   admin: [
+    { to: '/manage-event', label: 'Manajemen Event' },
     { to: '/venue', label: 'Manajemen Venue' },
     { to: '/manage-seats', label: 'Manajemen Kursi' },
     { to: '/artist', label: 'Manajemen Artis' },
@@ -18,31 +15,26 @@ const NAV_LINKS = {
     { to: '/manage-tickets', label: 'Manajemen Tiket' },
     { to: '/orders', label: 'Semua Order' },
     { to: '/promotion', label: 'Promosi' },
-    { to: '/asset-tickets', label: 'Tiket (Aset)' },
-    { to: '/asset-orders', label: 'Order (Aset)' },
     { to: '/profile', label: 'Profile' },
   ],
   customer: [
     { to: '/orders', label: 'Pesanan' },
     { to: '/my-tickets', label: 'Tiket Saya' },
-    { to: '/event', label: 'Cari Event' },
+    { to: '/event', label: 'Jelajahi Event' },
     { to: '/promotion', label: 'Promosi' },
     { to: '/venue', label: 'Venue' },
     { to: '/artist', label: 'Artis' },
-    { to: '/ticket-categories', label: 'Kategori Tiket' },
     { to: '/profile', label: 'Profile' },
   ],
   organizer: [
     { to: '/manage-event', label: 'Event Saya' },
     { to: '/venue', label: 'Manajemen Venue' },
     { to: '/manage-seats', label: 'Manajemen Kursi' },
-    { to: '/artist', label: 'Manajemen Artis' },
+    { to: '/artist', label: 'Artis' },
     { to: '/ticket-categories', label: 'Kategori Tiket' },
     { to: '/manage-tickets', label: 'Manajemen Tiket' },
     { to: '/orders', label: 'Daftar Order' },
     { to: '/promotion', label: 'Promosi' },
-    { to: '/asset-tickets', label: 'Tiket (Aset)' },
-    { to: '/asset-orders', label: 'Order (Aset)' },
     { to: '/profile', label: 'Profile' },
   ],
 };
@@ -60,11 +52,6 @@ const Navbar = () => {
     await logout();
     signOut();
     navigate('/');
-  };
-
-  const handleInaccessibleClick = (e) => {
-    e.preventDefault();
-    alert('Harus login terlebih dahulu!');
   };
 
   return (
@@ -92,13 +79,7 @@ const Navbar = () => {
             ) : (
               <>
                 {roleLinks.map((item) => (
-                  item.accessible ? (
-                    <NavLinkItem key={`guest-${item.label}`} to={item.to} label={item.label} />
-                  ) : (
-                    <a href="#" key={`guest-${item.label}`} onClick={handleInaccessibleClick} className="text-slate-600 hover:text-blue-600 font-bold text-sm whitespace-nowrap">
-                      {item.label}
-                    </a>
-                  )
+                  <NavLinkItem key={`guest-${item.label}`} to={item.to} label={item.label} />
                 ))}
               </>
             )}

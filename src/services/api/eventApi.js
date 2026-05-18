@@ -25,7 +25,7 @@ export async function fetchEventById(eventId) {
 // CREATE: Create new event
 export async function createEvent(eventData) {
   try {
-    const { event_title, event_datetime, venue_id, organizer_id, description, artists } = eventData;
+    const { event_title, event_datetime, venue_id, organizer_id, description, artists, categories } = eventData;
     
     const response = await apiClient.post('/events', {
       event_title,
@@ -33,7 +33,8 @@ export async function createEvent(eventData) {
       venue_id,
       organizer_id,
       description: description || '',
-      artists: Array.isArray(artists) ? artists : []
+      artists: Array.isArray(artists) ? artists : [],
+      categories: Array.isArray(categories) ? categories : []
     });
 
     return {
@@ -52,7 +53,7 @@ export async function createEvent(eventData) {
 // UPDATE: Update existing event
 export async function updateEvent(eventId, eventData) {
   try {
-    const { event_title, event_datetime, venue_id, organizer_id, description, artists } = eventData;
+    const { event_title, event_datetime, venue_id, organizer_id, description, artists, categories } = eventData;
     
     const response = await apiClient.put(`/events/${eventId}`, {
       event_title,
@@ -60,7 +61,8 @@ export async function updateEvent(eventId, eventData) {
       venue_id,
       organizer_id,
       description: description || '',
-      artists: Array.isArray(artists) ? artists : []
+      artists: Array.isArray(artists) ? artists : [],
+      categories: Array.isArray(categories) ? categories : []
     });
 
     return {
@@ -86,6 +88,7 @@ export async function fetchEventManagementData({ userRole, userId }) {
     return {
       venues: response.data.venues || [],
       artists: response.data.artists || [],
+      organizers: response.data.organizers || [],
       events: response.data.events || [],
     };
   } catch (error) {
@@ -93,6 +96,7 @@ export async function fetchEventManagementData({ userRole, userId }) {
     return {
       venues: [],
       artists: [],
+      organizers: [],
       events: []
     };
   }

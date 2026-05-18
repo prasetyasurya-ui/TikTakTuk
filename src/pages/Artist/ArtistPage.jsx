@@ -1,12 +1,10 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
 import { Search, Plus, X, AlertTriangle, Pencil, Trash2 } from 'lucide-react';
 import Navbar from '../../components/Navbar';
 import { artistApi, getCurrentSession } from '../../services/api';
 import { normalizeText, SQL_MAX_LENGTH } from '../../utils/formValidation';
 
 const ArtistPage = () => {
-  const navigate = useNavigate();
   const [artists, setArtists] = useState([]);
   const [isLoading, setIsLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState("");
@@ -18,16 +16,8 @@ const ArtistPage = () => {
   const [loadError, setLoadError] = useState('');
 
   const session = getCurrentSession();
-  const isLoggedIn = session.isLoggedIn;
   const userRole = session.userRole;
   const isAdmin = userRole === 'admin';
-
-  // Redirect guest (not logged in) to login
-  useEffect(() => {
-    if (!isLoggedIn) {
-      navigate('/');
-    }
-  }, [isLoggedIn, navigate]);
 
   const loadArtists = async () => {
     setIsLoading(true);
@@ -49,10 +39,8 @@ const ArtistPage = () => {
   };
 
   useEffect(() => {
-    if (isLoggedIn) {
-      loadArtists();
-    }
-  }, [isLoggedIn]);
+    loadArtists();
+  }, []);
 
   // Auto-dismiss success messages
   useEffect(() => {

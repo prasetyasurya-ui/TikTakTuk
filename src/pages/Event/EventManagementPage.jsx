@@ -44,16 +44,25 @@ const EventManagementPage = () => {
       venue: event.venue_id || '',
       venue_name: event.venue_name || '',
       venue_id: event.venue_id || '',
+      organizer_id: event.organizer_id || '',
       organizerName: event.organizer_name || '',
       description: event.description || '',
       artists: Array.isArray(event.artists) ? event.artists : [],
-      categories: Array.isArray(event.categories) ? event.categories : [{ name: 'Regular', price: 100000, quota: 100 }],
+      categories: Array.isArray(event.categories) && event.categories.length > 0
+        ? event.categories.map((category) => ({
+          id: category.category_id || '',
+          name: category.name || category.category_name || '',
+          price: Number(category.price) || 0,
+          quota: Number(category.quota) || 0,
+        }))
+        : [{ name: 'Regular', price: 100000, quota: 100 }],
     };
   };
 
   // --- DATA MASTER ---
   const [venues, setVenues] = useState([]);
   const [availableArtists, setAvailableArtists] = useState([]);
+  const [availableOrganizers, setAvailableOrganizers] = useState([]);
   
   const [events, setEvents] = useState([]);
 
@@ -62,6 +71,10 @@ const EventManagementPage = () => {
       const data = await fetchEventManagementData({ userRole, userId });
       setVenues((data.venues || []).map(normalizeVenue));
       setAvailableArtists((data.artists || []).map(normalizeArtist));
+      setAvailableOrganizers((data.organizers || []).map((organizer) => ({
+        id: organizer.organizer_id,
+        name: organizer.organizer_name,
+      })));
       setEvents((data.events || []).map(normalizeEvent));
     };
 
@@ -76,7 +89,7 @@ const EventManagementPage = () => {
   const [selectedEvent, setSelectedEvent] = useState(null);
   const [formEvent, setFormEvent] = useState({
     id: null,
-    title: '', date: '', time: '', venue: '', description: '',
+    title: '', date: '', time: '', venue: '', description: '', organizerId: '',
     artists: [],
     categories: [{ name: "Regular", price: 100000, quota: 100 }]
   });
@@ -86,7 +99,7 @@ const EventManagementPage = () => {
   // --- HANDLERS ---
   const openCreateModal = () => {
     setFormEvent({
-      title: '', date: '', time: '', venue: venues[0]?.id || '', description: '',
+      title: '', date: '', time: '', venue: venues[0]?.id || '', description: '', organizerId: availableOrganizers[0]?.id || '',
       artists: [],
       categories: [{ name: "Regular", price: 100000, quota: 100 }]
     });
@@ -108,6 +121,7 @@ const EventManagementPage = () => {
       time: event.time || '',
       venue: event.venue_id || '',
       description: event.description || '',
+      organizerId: event.organizer_id || '',
       artists: artistIds,
       categories: event.categories || [{ name: "Regular", price: 100000, quota: 100 }]
     });
@@ -165,6 +179,10 @@ const EventManagementPage = () => {
       nextErrors.venue = 'Venue wajib dipilih';
     }
 
+    if (userRole === 'admin' && !normalizeText(formEvent.organizerId)) {
+      nextErrors.organizerId = 'Organizer wajib dipilih';
+    }
+
     formEvent.categories.forEach((cat, index) => {
       const name = normalizeText(cat.name);
       const price = Number(cat.price);
@@ -197,9 +215,14 @@ const EventManagementPage = () => {
       event_title: title,
       event_datetime: datetime,
       venue_id: formEvent.venue,
-      organizer_id: userId || 1,
+      organizer_id: userRole === 'admin' ? formEvent.organizerId : userId,
       description: formEvent.description,
-      artists: formEvent.artists
+      artists: formEvent.artists,
+      categories: formEvent.categories.map((category) => ({
+        category_name: normalizeText(category.name),
+        price: Number(category.price),
+        quota: Number(category.quota),
+      })),
     };
 
     let result;
@@ -220,6 +243,10 @@ const EventManagementPage = () => {
     const data = await fetchEventManagementData({ userRole, userId });
     setVenues((data.venues || []).map(normalizeVenue));
     setAvailableArtists((data.artists || []).map(normalizeArtist));
+    setAvailableOrganizers((data.organizers || []).map((organizer) => ({
+      id: organizer.organizer_id,
+      name: organizer.organizer_name,
+    })));
     setEvents((data.events || []).map(normalizeEvent));
     
     setActiveModal(null);
@@ -389,6 +416,26 @@ const EventManagementPage = () => {
                   </select>
                   {formErrors.venue && <p className="text-red-500 text-xs mt-1">{formErrors.venue}</p>}
                 </div>
+
+                {userRole === 'admin' ? (
+                  <div>
+                    <label className="block text-[11px] font-bold text-slate-500 uppercase mb-1.5">Organizer</label>
+                    <select
+                      value={formEvent.organizerId}
+                      onChange={(e) => setFormEvent({ ...formEvent, organizerId: e.target.value })}
+                      className="w-full px-4 py-2.5 rounded-xl border border-slate-200 bg-white text-sm outline-none"
+                      required
+                    >
+                      <option value="">Pilih organizer</option>
+                      {availableOrganizers.map((organizer) => (
+                        <option key={organizer.id} value={organizer.id}>
+                          {organizer.name}
+                        </option>
+                      ))}
+                    </select>
+                    {formErrors.organizerId && <p className="text-red-500 text-xs mt-1">{formErrors.organizerId}</p>}
+                  </div>
+                ) : null}
 
                 <div>
                   <label className="block text-[11px] font-bold text-slate-500 uppercase mb-2 flex items-center gap-2"><Users size={13}/> Artist</label>

@@ -101,12 +101,6 @@ const CustomerForm = () => {
         return;
       }
 
-      localStorage.setItem('isLoggedIn', 'true');
-      localStorage.setItem('userId', result.user?.user_id || '');
-      localStorage.setItem('userRole', 'customer');
-      localStorage.setItem('userName', result.user?.username || normalized.username);
-      localStorage.setItem('username', result.user?.username || normalized.username);
-      
       alert("Registrasi Berhasil!");
       navigate('/login');
     } catch {
